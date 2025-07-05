@@ -1,0 +1,24 @@
+# Log files
+*.log
+
+# Backup directories
+/var/backups/
+/tmp/
+
+# Temporary files
+*.tmp
+*.temp
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Installation artifacts
+mysql-dotnet-install.log
