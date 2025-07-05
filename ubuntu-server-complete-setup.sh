@@ -799,14 +799,29 @@ interactive_config() {
     read -p "Set custom MySQL root password? (y/n): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        read -s -p "Enter MySQL root password: " MYSQL_ROOT_PASSWORD
-        echo
-        read -s -p "Confirm MySQL root password: " MYSQL_ROOT_PASSWORD_CONFIRM
-        echo
-        if [[ "$MYSQL_ROOT_PASSWORD" != "$MYSQL_ROOT_PASSWORD_CONFIRM" ]]; then
-            print_error "Passwords do not match!"
-            exit 1
-        fi
+        local password_attempts=0
+        local max_attempts=3
+        
+        while [[ $password_attempts -lt $max_attempts ]]; do
+            read -s -p "Enter MySQL root password: " MYSQL_ROOT_PASSWORD
+            echo
+            read -s -p "Confirm MySQL root password: " MYSQL_ROOT_PASSWORD_CONFIRM
+            echo
+            
+            if [[ "$MYSQL_ROOT_PASSWORD" == "$MYSQL_ROOT_PASSWORD_CONFIRM" ]]; then
+                print_success "Password confirmed successfully"
+                break
+            else
+                ((password_attempts++))
+                if [[ $password_attempts -lt $max_attempts ]]; then
+                    print_error "Passwords do not match! Attempt $password_attempts/$max_attempts"
+                    print_info "Please try again..."
+                else
+                    print_error "Maximum password attempts reached. Using auto-generated password."
+                    MYSQL_ROOT_PASSWORD=""
+                fi
+            fi
+        done
     fi
 
     # .NET configuration
@@ -853,6 +868,7 @@ interactive_config() {
     fi
 
     print_info "Configuration completed"
+    return 0
 }
 
 # =============================================================================
@@ -870,31 +886,43 @@ main() {
     log_message "Starting installation process"
 
     # Pre-installation checks
+    print_info "Performing pre-installation checks..."
     check_root
     check_ubuntu
+    print_success "Pre-installation checks completed"
 
     # Interactive configuration
+    print_info "Starting interactive configuration..."
     interactive_config
+    print_success "Interactive configuration completed"
 
     # Installation steps
+    print_info "Starting system installation steps..."
     update_system
     install_mysql
     install_dotnet
+    print_success "Core installation steps completed"
     
     # Configure Git and GitHub if requested
     if [[ "$CONFIGURE_GITHUB" == true ]]; then
+        print_info "Configuring Git and GitHub..."
         configure_git_github
+        print_success "Git and GitHub configuration completed"
     fi
     
     # Install monitoring tools if requested
     if [[ "$INSTALL_MONITORING" == true ]]; then
+        print_info "Installing monitoring tools..."
         install_monitoring_tools
+        print_success "Monitoring tools installation completed"
     fi
     
+    print_info "Configuring system security and services..."
     configure_firewall
     create_service_user
     create_database_user
     create_systemd_template
+    print_success "System configuration completed"
 
     # Post-installation
     display_system_info
@@ -902,6 +930,8 @@ main() {
     log_message "Installation process completed successfully"
 
     print_success "Installation completed! Please reboot the system to ensure all changes take effect."
+    
+    return 0
 }
 
 # =============================================================================
@@ -916,6 +946,7 @@ make_scripts_executable() {
     
     local script_extensions=("sh" "bash" "py" "pl" "rb" "js" "php")
     local processed_count=0
+    local error_count=0
     
     for file in *; do
         if [[ -f "$file" ]]; then
@@ -941,9 +972,13 @@ make_scripts_executable() {
             if [[ "$is_script" == true ]]; then
                 if [[ ! -x "$file" ]]; then
                     print_info "Making $file executable..."
-                    chmod +x "$file"
-                    ((processed_count++))
-                    print_success "Made $file executable"
+                    if chmod +x "$file"; then
+                        ((processed_count++))
+                        print_success "Made $file executable"
+                    else
+                        ((error_count++))
+                        print_error "Failed to make $file executable"
+                    fi
                 else
                     print_info "$file is already executable"
                 fi
@@ -952,7 +987,12 @@ make_scripts_executable() {
     done
     
     print_success "Processed $processed_count script files"
+    if [[ $error_count -gt 0 ]]; then
+        print_warning "Failed to process $error_count files"
+    fi
     print_info "make_scripts_executable function completed successfully"
+    
+    return 0
 }
 
 # Function to run Ubuntu user management
@@ -1202,11 +1242,18 @@ case "${1:-}" in
         ;;
     "")
         # Run main installation
+        print_info "Starting Ubuntu Server Complete Setup..."
+        print_info "Step 1: Making scripts executable"
         make_scripts_executable
-        echo "Scripts made executable. Starting main installation..."
-        echo "About to call main function..."
-        main
-        echo "Main function completed"
+        print_success "Scripts made executable successfully"
+        
+        print_info "Step 2: Starting main installation process"
+        if main; then
+            print_success "Main installation completed successfully"
+        else
+            print_error "Main installation failed"
+            exit 1
+        fi
         ;;
     *)
         echo "Unknown option: $1"
