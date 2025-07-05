@@ -32,6 +32,12 @@ This comprehensive bash script automates the installation and configuration of a
 - **Network Monitoring**: vnstat for traffic analysis
 - **Performance Tools**: CPU, memory, disk, and network monitoring
 
+### 🔧 Troubleshooting Tools
+- **Netdata Troubleshooter**: Comprehensive diagnostic and repair script (`netdata-troubleshoot.sh`)
+- **Permission Fixing**: Automatic web directory and service permissions repair
+- **Service Diagnostics**: Health checks for Netdata installation and configuration
+- **Network Testing**: Connectivity and port accessibility verification
+
 ## Prerequisites
 
 ### System Requirements
@@ -418,6 +424,74 @@ gco               # git checkout
 ```
 
 ## Troubleshooting
+
+### Netdata Monitoring Issues
+
+#### Quick Netdata Troubleshooting
+```bash
+# Run comprehensive diagnostic and repair
+sudo ./netdata-troubleshoot.sh
+
+# Only diagnose issues (no changes)
+sudo ./netdata-troubleshoot.sh --diagnose
+
+# Only run repairs
+sudo ./netdata-troubleshoot.sh --repair
+
+# Test connectivity only
+sudo ./netdata-troubleshoot.sh --test
+```
+
+#### Common Netdata Problems and Solutions
+
+**Problem**: "Access to file is not permitted" error when accessing Netdata
+```bash
+# Solution 1: Fix permissions automatically
+sudo ./netdata-troubleshoot.sh --repair
+
+# Solution 2: Manual permission fix
+sudo chown -R netdata:netdata /usr/share/netdata/web
+sudo chmod -R 755 /usr/share/netdata/web
+sudo systemctl restart netdata
+```
+
+**Problem**: Netdata service not running
+```bash
+# Check service status
+sudo systemctl status netdata
+
+# Restart service
+sudo systemctl restart netdata
+
+# Enable auto-start
+sudo systemctl enable netdata
+
+# Check logs
+sudo journalctl -u netdata -f
+```
+
+**Problem**: Cannot access Netdata web interface
+```bash
+# Test local connectivity
+curl http://localhost:19999
+
+# Check if port is listening
+sudo netstat -tuln | grep 19999
+
+# Check firewall
+sudo ufw status | grep 19999
+
+# Run full diagnostic
+sudo ./netdata-troubleshoot.sh --diagnose
+```
+
+#### Netdata Troubleshooting Script Features
+- **Comprehensive Diagnostics**: Checks installation, service, permissions, and connectivity
+- **Automatic Repairs**: Fixes common permission and configuration issues
+- **Safety First**: Creates backups before making changes
+- **SELinux/AppArmor Support**: Handles security context issues
+- **Detailed Logging**: All operations logged for troubleshooting
+- **Multiple Modes**: Diagnose-only, repair-only, or comprehensive modes
 
 ### Common Issues
 
