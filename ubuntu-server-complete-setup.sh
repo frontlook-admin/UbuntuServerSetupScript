@@ -409,8 +409,53 @@ install_monitoring_tools() {
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         print_info "Installing Netdata..."
-        bash <(curl -Ss https://my-netdata.io/kickstart.sh) --dont-wait >> "$LOG_FILE" 2>&1
-        print_success "Netdata installed - accessible at http://localhost:19999"
+        
+        # Install Netdata with better error handling
+        if bash <(curl -Ss https://my-netdata.io/kickstart.sh) --dont-wait >> "$LOG_FILE" 2>&1; then
+            print_success "Netdata installation completed"
+            
+            # Wait for service to start
+            print_info "Waiting for Netdata service to start..."
+            sleep 5
+            
+            # Verify installation
+            if systemctl is-active --quiet netdata; then
+                print_success "Netdata service is running"
+                
+                # Test web interface accessibility
+                print_info "Testing web interface accessibility..."
+                if curl -s -f "http://localhost:19999/" > /dev/null 2>&1; then
+                    print_success "Netdata web interface is accessible at http://localhost:19999"
+                else
+                    print_warning "Netdata installed but web interface test failed"
+                    print_info "You can run 'sudo ./netdata-troubleshoot.sh' to diagnose and fix issues"
+                fi
+            else
+                print_warning "Netdata installed but service is not running"
+                print_info "Attempting to start service..."
+                if systemctl start netdata >> "$LOG_FILE" 2>&1; then
+                    print_success "Netdata service started successfully"
+                else
+                    print_error "Failed to start Netdata service"
+                    print_info "Check logs with: sudo journalctl -u netdata"
+                    print_info "Run troubleshooting script: sudo ./netdata-troubleshoot.sh"
+                fi
+            fi
+            
+            # Configure proper permissions
+            print_info "Configuring Netdata permissions..."
+            if [[ -d "/usr/share/netdata/web" ]]; then
+                # Ensure proper ownership and permissions
+                chown -R netdata:netdata /usr/share/netdata/web /var/lib/netdata /var/cache/netdata /var/log/netdata 2>/dev/null || true
+                chmod -R 755 /usr/share/netdata/web 2>/dev/null || true
+                print_success "Netdata permissions configured"
+            fi
+            
+        else
+            print_error "Netdata installation failed"
+            print_info "Check installation log: $LOG_FILE"
+            print_info "You can retry installation manually or run troubleshooting script later"
+        fi
     fi
 
     # Configure vnstat for network monitoring
@@ -826,6 +871,13 @@ display_system_info() {
     echo "    - Consider IP restrictions: ufw delete allow 3306/tcp && ufw allow from YOUR_IP to any port 3306"
     echo "    - Use strong passwords for all MySQL accounts"
     echo "    - Create limited privilege users for backups"
+    echo
+    echo "Troubleshooting Tools:"
+    echo "====================="
+    echo "• Netdata issues: sudo ./netdata-troubleshoot.sh"
+    echo "• System monitoring: netdata (http://localhost:19999)"
+    echo "• Performance monitoring: htop, iotop, glances"
+    echo "• Network monitoring: vnstat, iftop, nethogs"
 }
 
 # =============================================================================

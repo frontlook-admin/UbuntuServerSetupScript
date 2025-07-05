@@ -119,7 +119,15 @@ test_menu_functionality() {
 test_script_permissions() {
     print_header "Testing Script Permissions"
     
-    local script_files=("ubuntu-server-complete-setup.sh" "make-executable.sh" "ubuntu-user-manager.sh" "mysql-user-manager.sh" "clone-and-run.sh" "install.sh")
+    local script_files=(
+        "ubuntu-server-complete-setup.sh" 
+        "make-executable.sh" 
+        "ubuntu-user-manager.sh" 
+        "mysql-user-manager.sh" 
+        "clone-and-run.sh" 
+        "install.sh"
+        "netdata-troubleshoot.sh"
+    )
     
     for script in "${script_files[@]}"; do
         if [[ -f "$script" ]]; then
@@ -140,7 +148,15 @@ test_script_permissions() {
 test_script_syntax() {
     print_header "Testing Script Syntax"
     
-    local script_files=("ubuntu-server-complete-setup.sh" "make-executable.sh" "ubuntu-user-manager.sh" "mysql-user-manager.sh" "clone-and-run.sh" "install.sh")
+    local script_files=(
+        "ubuntu-server-complete-setup.sh" 
+        "make-executable.sh" 
+        "ubuntu-user-manager.sh" 
+        "mysql-user-manager.sh" 
+        "clone-and-run.sh" 
+        "install.sh"
+        "netdata-troubleshoot.sh"
+    )
     
     for script in "${script_files[@]}"; do
         if [[ -f "$script" ]]; then
@@ -170,6 +186,7 @@ test_script_integration() {
         "make-executable.sh"
         "install.sh"
         "clone-and-run.sh"
+        "netdata-troubleshoot.sh"
     )
     
     print_info "Checking for required scripts..."
@@ -180,6 +197,17 @@ test_script_integration() {
             print_info "$script not found (may be optional)"
         fi
     done
+    
+    # Test netdata-troubleshoot.sh specifically
+    if [[ -f "netdata-troubleshoot.sh" ]]; then
+        print_info "Testing netdata-troubleshoot.sh help functionality..."
+        if ./netdata-troubleshoot.sh --help > /dev/null 2>&1; then
+            print_success "Netdata troubleshooting script help works"
+        else
+            print_error "Netdata troubleshooting script help failed"
+            return 1
+        fi
+    fi
     
     return 0
 }
