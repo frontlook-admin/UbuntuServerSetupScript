@@ -66,12 +66,32 @@ print_info() {
 }
 
 log_message() {
-    # Ensure log file exists before trying to log
+    # Try to create log file in /var/log first, fallback to current directory
+    local log_created=false
+    
+    # Try to create log file in preferred location
     if [[ ! -f "$LOG_FILE" ]]; then
-        mkdir -p /var/log
-        touch "$LOG_FILE"
+        if mkdir -p /var/log 2>/dev/null && touch "$LOG_FILE" 2>/dev/null; then
+            log_created=true
+        else
+            # Fallback to current directory
+            LOG_FILE="./mysql-dotnet-install.log"
+            if touch "$LOG_FILE" 2>/dev/null; then
+                log_created=true
+            else
+                # If all else fails, just output to stdout
+                echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
+                return 0
+            fi
+        fi
     fi
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+    
+    # Log to file if available
+    if [[ -f "$LOG_FILE" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+    else
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
+    fi
 }
 
 check_root() {
@@ -1090,6 +1110,212 @@ run_all_scripts() {
 }
 
 # =============================================================================
+# MAIN MENU SYSTEM
+# =============================================================================
+
+# Function to show the main menu
+show_main_menu() {
+    while true; do
+        clear
+        print_header "Ubuntu Server Complete Setup - Main Menu"
+        echo
+        echo "Please select an option:"
+        echo
+        echo "INSTALLATION OPTIONS:"
+        echo "  1) Complete Server Setup (Interactive)"
+        echo "  2) Complete Server Setup (Automatic)"
+        echo "  3) Install MySQL Only"
+        echo "  4) Install .NET Only"
+        echo "  5) Configure Git/GitHub Only"
+        echo "  6) Install Monitoring Tools Only"
+        echo "  7) Configure Security/Firewall Only"
+        echo
+        echo "USER MANAGEMENT OPTIONS:"
+        echo "  8) Manage Ubuntu Users"
+        echo "  9) Manage MySQL Users"
+        echo " 10) Show User Management Menu"
+        echo
+        echo "SCRIPT MANAGEMENT OPTIONS:"
+        echo " 11) Make All Scripts Executable"
+        echo " 12) Run All Available Scripts"
+        echo " 13) Test Installation Scripts"
+        echo
+        echo "INFORMATION OPTIONS:"
+        echo " 14) Show Help/Usage Information"
+        echo " 15) Display System Information"
+        echo
+        echo "  0) Exit"
+        echo
+        read -p "Enter your choice (0-15): " choice
+        
+        case $choice in
+            1)
+                print_info "Starting Complete Server Setup (Interactive)..."
+                make_scripts_executable
+                main
+                read -p "Press Enter to continue..." && continue
+                ;;
+            2)
+                print_info "Starting Complete Server Setup (Automatic)..."
+                CONFIGURE_GITHUB=false
+                INSTALL_MONITORING=false
+                make_scripts_executable
+                main
+                read -p "Press Enter to continue..." && continue
+                ;;
+            3)
+                print_info "Installing MySQL Only..."
+                check_root
+                check_ubuntu
+                update_system
+                install_mysql
+                display_system_info
+                read -p "Press Enter to continue..." && continue
+                ;;
+            4)
+                print_info "Installing .NET Only..."
+                check_root
+                check_ubuntu
+                update_system
+                install_dotnet
+                display_system_info
+                read -p "Press Enter to continue..." && continue
+                ;;
+            5)
+                print_info "Configuring Git and GitHub Only..."
+                check_root
+                check_ubuntu
+                CONFIGURE_GITHUB=true
+                read -p "Enter GitHub username: " GITHUB_USERNAME
+                read -p "Enter GitHub email: " GITHUB_EMAIL
+                update_system
+                configure_git_github
+                display_system_info
+                read -p "Press Enter to continue..." && continue
+                ;;
+            6)
+                print_info "Installing System Monitoring Tools Only..."
+                check_root
+                check_ubuntu
+                INSTALL_MONITORING=true
+                update_system
+                install_monitoring_tools
+                display_system_info
+                read -p "Press Enter to continue..." && continue
+                ;;
+            7)
+                print_info "Configuring Firewall and Security Only..."
+                check_root
+                check_ubuntu
+                update_system
+                configure_firewall
+                display_system_info
+                read -p "Press Enter to continue..." && continue
+                ;;
+            8)
+                print_info "Starting Ubuntu User Management..."
+                check_root
+                run_ubuntu_user_manager
+                read -p "Press Enter to continue..." && continue
+                ;;
+            9)
+                print_info "Starting MySQL User Management..."
+                check_root
+                run_mysql_user_manager
+                read -p "Press Enter to continue..." && continue
+                ;;
+            10)
+                print_info "Showing User Management Menu..."
+                check_root
+                show_user_management_menu
+                read -p "Press Enter to continue..." && continue
+                ;;
+            11)
+                print_info "Making All Scripts Executable..."
+                make_scripts_executable
+                read -p "Press Enter to continue..." && continue
+                ;;
+            12)
+                print_info "Running All Available Scripts..."
+                check_root
+                check_ubuntu
+                run_all_scripts
+                read -p "Press Enter to continue..." && continue
+                ;;
+            13)
+                print_info "Testing Installation Scripts..."
+                if [[ -f "test-installation.sh" ]]; then
+                    if [[ -x "test-installation.sh" ]]; then
+                        ./test-installation.sh
+                    else
+                        print_info "Making test script executable..."
+                        chmod +x test-installation.sh 2>/dev/null || true
+                        bash test-installation.sh
+                    fi
+                else
+                    print_error "Test script not found (test-installation.sh)"
+                fi
+                read -p "Press Enter to continue..." && continue
+                ;;
+            14)
+                print_info "Showing Help Information..."
+                echo "Usage: $0 [options]"
+                echo
+                echo "INSTALLATION OPTIONS:"
+                echo "  --help, -h          Show this help message"
+                echo "  --auto              Run with default settings (non-interactive)"
+                echo "  --mysql-only        Install only MySQL"
+                echo "  --dotnet-only       Install only .NET"
+                echo "  --git-only          Install and configure Git/GitHub only"
+                echo "  --monitoring-only   Install system monitoring tools only"
+                echo "  --security-only     Configure firewall and security only"
+                echo "  --no-git            Skip Git/GitHub configuration"
+                echo "  --no-monitoring     Skip monitoring tools installation"
+                echo "  --no-interactive    Skip all interactive prompts"
+                echo
+                echo "USER MANAGEMENT OPTIONS:"
+                echo "  --manage-users      Run Ubuntu user management"
+                echo "  --manage-mysql      Run MySQL user management"
+                echo "  --user-menu         Show user management menu"
+                echo
+                echo "SCRIPT MANAGEMENT OPTIONS:"
+                echo "  --make-executable   Make all scripts in directory executable"
+                echo "  --run-all           Run all available scripts and tools"
+                echo
+                echo "AVAILABLE SCRIPTS:"
+                echo "  • ubuntu-server-complete-setup.sh - Complete server setup script"
+                echo "  • ubuntu-user-manager.sh     - Ubuntu system user management"
+                echo "  • mysql-user-manager.sh      - MySQL user management"
+                echo "  • make-executable.sh         - Script permission manager"
+                echo
+                echo "EXAMPLES:"
+                echo "  $0                           # Show main menu"
+                echo "  $0 --auto                    # Automatic installation"
+                echo "  $0 --make-executable         # Make all scripts executable"
+                echo "  $0 --manage-users            # Manage Ubuntu users"
+                echo "  $0 --manage-mysql            # Manage MySQL users"
+                echo "  $0 --user-menu               # Show user management menu"
+                echo "  $0 --run-all                 # Run everything"
+                read -p "Press Enter to continue..." && continue
+                ;;
+            15)
+                print_info "Displaying System Information..."
+                display_system_info
+                read -p "Press Enter to continue..." && continue
+                ;;
+            0)
+                print_info "Exiting Ubuntu Server Setup..."
+                exit 0
+                ;;
+            *)
+                print_error "Invalid option. Please select 0-15."
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+# =============================================================================
 # SCRIPT EXECUTION
 # =============================================================================
 
@@ -1126,7 +1352,7 @@ case "${1:-}" in
         echo "  • make-executable.sh         - Script permission manager"
         echo
         echo "EXAMPLES:"
-        echo "  $0                           # Interactive installation"
+        echo "  $0                           # Show main menu"
         echo "  $0 --auto                    # Automatic installation"
         echo "  $0 --make-executable         # Make all scripts executable"
         echo "  $0 --manage-users            # Manage Ubuntu users"
@@ -1241,19 +1467,8 @@ case "${1:-}" in
         main
         ;;
     "")
-        # Run main installation
-        print_info "Starting Ubuntu Server Complete Setup..."
-        print_info "Step 1: Making scripts executable"
-        make_scripts_executable
-        print_success "Scripts made executable successfully"
-        
-        print_info "Step 2: Starting main installation process"
-        if main; then
-            print_success "Main installation completed successfully"
-        else
-            print_error "Main installation failed"
-            exit 1
-        fi
+        # Show main menu instead of running installation automatically
+        show_main_menu
         ;;
     *)
         echo "Unknown option: $1"

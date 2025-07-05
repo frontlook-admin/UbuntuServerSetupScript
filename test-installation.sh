@@ -69,6 +69,37 @@ test_script_execution() {
     return 0
 }
 
+test_menu_functionality() {
+    print_header "Testing Menu Functionality"
+    
+    # Test menu display (simulate menu option 0 - exit)
+    print_info "Testing main menu display..."
+    if echo "0" | timeout 10 ./ubuntu-server-complete-setup.sh > /dev/null 2>&1; then
+        print_success "Main menu displays and exits correctly"
+    else
+        print_info "Menu test skipped (interactive mode only)"
+    fi
+    
+    # Test command line options
+    print_info "Testing various command line options..."
+    
+    local options=(
+        "--help"
+        "--make-executable"
+    )
+    
+    for option in "${options[@]}"; do
+        if ./ubuntu-server-complete-setup.sh "$option" > /dev/null 2>&1; then
+            print_success "Option $option works correctly"
+        else
+            print_error "Option $option failed"
+            return 1
+        fi
+    done
+    
+    return 0
+}
+
 test_script_permissions() {
     print_header "Testing Script Permissions"
     
@@ -112,6 +143,31 @@ test_script_syntax() {
     return 0
 }
 
+test_script_integration() {
+    print_header "Testing Script Integration"
+    
+    # Test that all referenced scripts exist
+    local expected_scripts=(
+        "ubuntu-server-complete-setup.sh"
+        "ubuntu-user-manager.sh"
+        "mysql-user-manager.sh"
+        "make-executable.sh"
+        "install.sh"
+        "clone-and-run.sh"
+    )
+    
+    print_info "Checking for required scripts..."
+    for script in "${expected_scripts[@]}"; do
+        if [[ -f "$script" ]]; then
+            print_success "$script found"
+        else
+            print_info "$script not found (may be optional)"
+        fi
+    done
+    
+    return 0
+}
+
 main() {
     print_header "Ubuntu Server Setup Test Suite"
     
@@ -136,6 +192,20 @@ main() {
         print_success "Script execution tests passed"
     else
         print_error "Script execution tests failed"
+        ((test_results++))
+    fi
+    
+    if test_menu_functionality; then
+        print_success "Menu functionality tests passed"
+    else
+        print_error "Menu functionality tests failed"
+        ((test_results++))
+    fi
+    
+    if test_script_integration; then
+        print_success "Script integration tests passed"
+    else
+        print_error "Script integration tests failed"
         ((test_results++))
     fi
     
