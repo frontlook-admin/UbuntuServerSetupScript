@@ -375,6 +375,40 @@ configure_git_github() {
 }
 
 # =============================================================================
+# NETDATA CONFIGURATION
+# =============================================================================
+
+configure_netdata_remote_access() {
+    print_info "Configuring Netdata for remote access..."
+    
+    # Create netdata configuration directory if it doesn't exist
+    mkdir -p /etc/netdata
+    
+    # Create or modify netdata.conf
+    cat > /etc/netdata/netdata.conf <<EOF
+[global]
+    run as user = netdata
+    web files owner = root
+    web files group = netdata
+
+[web]
+    bind to = 0.0.0.0:19999
+    allow connections from = *
+    allow dashboard from = *
+    allow badges from = *
+    allow streaming from = *
+    allow netdata.conf from = *
+    allow management from = *
+EOF
+    
+    # Restart netdata service to apply configuration
+    print_info "Restarting Netdata service..."
+    systemctl restart netdata >> "$LOG_FILE" 2>&1 || true
+    
+    print_success "Netdata configured for remote access"
+}
+
+# =============================================================================
 # SYSTEM MONITORING TOOLS
 # =============================================================================
 
@@ -410,7 +444,20 @@ install_monitoring_tools() {
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         print_info "Installing Netdata..."
         bash <(curl -Ss https://my-netdata.io/kickstart.sh) --dont-wait >> "$LOG_FILE" 2>&1
-        print_success "Netdata installed - accessible at http://localhost:19999"
+        
+        # Ask user about remote access configuration
+        echo
+        print_warning "SECURITY NOTICE: Netdata can be configured for localhost-only or remote access."
+        print_info "Localhost-only (default): More secure, accessible only from server"
+        print_info "Remote access: Less secure, accessible from any IP address"
+        read -p "Enable remote access to Netdata? (y/n): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            configure_netdata_remote_access
+            print_success "Netdata installed - accessible remotely at http://YOUR_SERVER_IP:19999"
+        else
+            print_success "Netdata installed - accessible at http://localhost:19999 (localhost only)"
+        fi
     fi
 
     # Configure vnstat for network monitoring
@@ -736,7 +783,12 @@ display_system_info() {
         echo "VnStat: Running"
     fi
     if systemctl is-active --quiet netdata; then
-        echo "Netdata: Running (http://localhost:19999)"
+        # Check if Netdata is configured for remote access
+        if [[ -f /etc/netdata/netdata.conf ]] && grep -q "bind to = 0.0.0.0:19999" /etc/netdata/netdata.conf 2>/dev/null; then
+            echo "Netdata: Running (http://YOUR_SERVER_IP:19999 - Remote Access Enabled)"
+        else
+            echo "Netdata: Running (http://localhost:19999 - Localhost Only)"
+        fi
     fi
     echo
     echo "MySQL Information:"
