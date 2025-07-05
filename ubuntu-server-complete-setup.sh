@@ -19,11 +19,15 @@
 
 set -e  # Exit on any error
 
-# Color codes for output
+# Color codes for output - Dark theme compatible
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+PURPLE='\033[0;35m'
+WHITE='\033[1;37m'
+GRAY='\033[0;37m'
 NC='\033[0m' # No Color
 
 # Configuration variables
@@ -44,9 +48,9 @@ GITHUB_EMAIL=""
 # =============================================================================
 
 print_header() {
-    echo -e "${BLUE}=================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}=================================${NC}"
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC} ${WHITE}$1${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════╝${NC}"
 }
 
 print_success() {
@@ -62,7 +66,23 @@ print_warning() {
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ $1${NC}"
+    echo -e "${CYAN}ℹ $1${NC}"
+}
+
+print_highlight() {
+    echo -e "${PURPLE}★ $1${NC}"
+}
+
+print_step() {
+    echo -e "${WHITE}→ $1${NC}"
+}
+
+print_completion() {
+    echo
+    echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║${NC} ${WHITE}✓ COMPLETED: $1${NC}"
+    echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo
 }
 
 log_message() {
@@ -1053,38 +1073,61 @@ run_mysql_user_manager() {
 
 # Function to show user management menu
 show_user_management_menu() {
-    print_header "User Management Menu"
-    
     while true; do
+        clear
+        print_header "User Management Menu"
         echo
-        echo "Available User Management Options:"
-        echo "1) Ubuntu System User Management"
-        echo "2) MySQL User Management"
-        echo "3) Make Scripts Executable"
-        echo "4) Return to Main Menu"
-        echo "5) Exit"
+        echo -e "${WHITE}Available User Management Options:${NC}"
         echo
-        read -p "Select option (1-5): " choice
+        echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${CYAN}║${NC} ${PURPLE}USER MANAGEMENT OPTIONS${NC}                                                                  ${CYAN}║${NC}"
+        echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}1)${NC} Ubuntu System User Management                                                        ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}2)${NC} MySQL User Management                                                                ${CYAN}║${NC}"
+        echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${BLUE}SCRIPT MANAGEMENT${NC}                                                                        ${CYAN}║${NC}"
+        echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}3)${NC} Make Scripts Executable                                                              ${CYAN}║${NC}"
+        echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${WHITE}NAVIGATION${NC}                                                                               ${CYAN}║${NC}"
+        echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${GREEN}4)${NC} Return to Main Menu                                                                  ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${RED}5)${NC} Exit                                                                                  ${CYAN}║${NC}"
+        echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════╝${NC}"
+        echo
+        echo -e "${WHITE}Select option (1-5): ${NC}\c"
+        read choice
         
         case $choice in
             1)
+                print_info "Starting Ubuntu System User Management..."
                 run_ubuntu_user_manager
+                echo
+                read -p "Press Enter to continue..." && continue
                 ;;
             2)
+                print_info "Starting MySQL User Management..."
                 run_mysql_user_manager
+                echo
+                read -p "Press Enter to continue..." && continue
                 ;;
             3)
+                print_info "Making Scripts Executable..."
                 make_scripts_executable
+                echo
+                read -p "Press Enter to continue..." && continue
                 ;;
             4)
+                print_info "Returning to Main Menu..."
                 return 0
                 ;;
             5)
-                print_info "Exiting..."
+                print_info "Exiting User Management..."
                 exit 0
                 ;;
             *)
                 print_error "Invalid option. Please select 1-5."
+                sleep 2
                 ;;
         esac
     done
@@ -1119,34 +1162,41 @@ show_main_menu() {
         clear
         print_header "Ubuntu Server Complete Setup - Main Menu"
         echo
-        echo "Please select an option:"
+        echo -e "${WHITE}Please select an option:${NC}"
         echo
-        echo "INSTALLATION OPTIONS:"
-        echo "  1) Complete Server Setup (Interactive)"
-        echo "  2) Complete Server Setup (Automatic)"
-        echo "  3) Install MySQL Only"
-        echo "  4) Install .NET Only"
-        echo "  5) Configure Git/GitHub Only"
-        echo "  6) Install Monitoring Tools Only"
-        echo "  7) Configure Security/Firewall Only"
+        echo -e "${CYAN}╔════════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${CYAN}║${NC} ${GREEN}INSTALLATION OPTIONS${NC}                                                                      ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}1)${NC} Complete Server Setup (Interactive)                                                 ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}2)${NC} Complete Server Setup (Automatic)                                                   ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}3)${NC} Install MySQL Only                                                                   ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}4)${NC} Install .NET Only                                                                    ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}5)${NC} Configure Git/GitHub Only                                                            ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}6)${NC} Install Monitoring Tools Only                                                        ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}7)${NC} Configure Security/Firewall Only                                                     ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${PURPLE}USER MANAGEMENT OPTIONS${NC}                                                                   ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}8)${NC} Manage Ubuntu Users                                                                  ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}9)${NC} Manage MySQL Users                                                                   ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}10)${NC} Show User Management Menu                                                           ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${BLUE}SCRIPT MANAGEMENT OPTIONS${NC}                                                                  ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}11)${NC} Make All Scripts Executable                                                         ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}12)${NC} Run All Available Scripts                                                           ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}13)${NC} Test Installation Scripts                                                           ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${WHITE}INFORMATION OPTIONS${NC}                                                                       ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}14)${NC} Show Help/Usage Information                                                         ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}15)${NC} Display System Information                                                          ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${RED}0)${NC} Exit                                                                                   ${CYAN}║${NC}"
+        echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════════════════════╝${NC}"
         echo
-        echo "USER MANAGEMENT OPTIONS:"
-        echo "  8) Manage Ubuntu Users"
-        echo "  9) Manage MySQL Users"
-        echo " 10) Show User Management Menu"
-        echo
-        echo "SCRIPT MANAGEMENT OPTIONS:"
-        echo " 11) Make All Scripts Executable"
-        echo " 12) Run All Available Scripts"
-        echo " 13) Test Installation Scripts"
-        echo
-        echo "INFORMATION OPTIONS:"
-        echo " 14) Show Help/Usage Information"
-        echo " 15) Display System Information"
-        echo
-        echo "  0) Exit"
-        echo
-        read -p "Enter your choice (0-15): " choice
+        echo -e "${WHITE}Enter your choice (0-15): ${NC}\c"
+        read choice
         
         case $choice in
             1)

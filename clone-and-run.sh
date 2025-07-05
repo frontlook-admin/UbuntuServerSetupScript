@@ -8,11 +8,15 @@
 # Version: 1.0
 # =============================================================================
 
-# Color codes for output
+# Color codes for output - Dark theme compatible
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+PURPLE='\033[0;35m'
+WHITE='\033[1;37m'
+GRAY='\033[0;37m'
 NC='\033[0m' # No Color
 
 # Repository information
@@ -22,25 +26,33 @@ SCRIPT_NAME="ubuntu-server-complete-setup.sh"
 
 # Print functions
 print_header() {
-    echo -e "${BLUE}=================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}=================================${NC}"
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC} ${WHITE}$1${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════╝${NC}"
 }
 
 print_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    echo -e "${CYAN}ℹ $1${NC}"
 }
 
 print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo -e "${GREEN}✓ $1${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}⚠ $1${NC}"
 }
 
 print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}✗ $1${NC}"
+}
+
+print_highlight() {
+    echo -e "${PURPLE}★ $1${NC}"
+}
+
+print_step() {
+    echo -e "${WHITE}→ $1${NC}"
 }
 
 # Check if running as root
@@ -123,14 +135,19 @@ main() {
     echo
     
     # Ask user how to proceed
-    echo -e "${YELLOW}Choose how to run the setup script:${NC}"
-    echo "1) Interactive mode (recommended for first-time users)"
-    echo "2) Automatic mode (uses default settings)"
-    echo "3) Show help and exit"
-    echo "4) Exit without running"
+    echo -e "${WHITE}Choose how to run the setup script:${NC}"
     echo
-    
-    read -p "Enter your choice (1-4): " -n 1 -r
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC} ${GREEN}EXECUTION OPTIONS${NC}                                                                         ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}1)${NC} Interactive mode (recommended for first-time users)                               ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}2)${NC} Automatic mode (uses default settings)                                            ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}3)${NC} Show help and exit                                                                 ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${RED}4)${NC} Exit without running                                                                ${CYAN}║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo
+    echo -e "${WHITE}Enter your choice (1-4): ${NC}\c"
+    read -n 1 -r REPLY
     echo
     
     case $REPLY in

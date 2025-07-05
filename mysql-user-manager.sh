@@ -11,12 +11,15 @@
 
 set -e  # Exit on any error
 
-# Color codes for output
+# Color codes for output - Dark theme compatible
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
+PURPLE='\033[0;35m'
+WHITE='\033[1;37m'
+GRAY='\033[0;37m'
 NC='\033[0m' # No Color
 
 # Configuration
@@ -35,9 +38,9 @@ MYSQL_ROOT_PASSWORD=""
 # =============================================================================
 
 print_header() {
-    echo -e "${BLUE}=================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}=================================${NC}"
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC} ${WHITE}$1${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════╝${NC}"
 }
 
 print_success() {
@@ -765,22 +768,39 @@ interactive_delete_user() {
 show_main_menu() {
     clear
     print_header "MySQL User Management Script"
-
-    echo "1)  Create user with global rights"
-    echo "2)  Create user with database-specific rights"
-    echo "3)  Modify user password"
-    echo "4)  Modify user privileges"
-    echo "5)  Delete user"
-    echo "6)  List all users"
-    echo "7)  Show user privileges"
-    echo "8)  Interactive user creation"
-    echo "9)  Interactive user modification"
-    echo "10) Interactive user deletion"
-    echo "11) Backup all users"
-    echo "12) Test MySQL connection"
-    echo "0)  Exit"
     echo
-    read -p "Enter your choice (0-12): " choice
+    echo -e "${WHITE}Please select an option:${NC}"
+    echo
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC} ${GREEN}USER CREATION OPTIONS${NC}                                                                     ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}1)${NC} Create user with global rights                                                      ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}2)${NC} Create user with database-specific rights                                           ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}8)${NC} Interactive user creation (guided)                                                 ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${PURPLE}USER MODIFICATION OPTIONS${NC}                                                                ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}3)${NC} Modify user password                                                                ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}4)${NC} Modify user privileges                                                              ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}9)${NC} Interactive user modification (guided)                                             ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${BLUE}USER MANAGEMENT OPTIONS${NC}                                                                    ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}5)${NC} Delete user                                                                         ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}6)${NC} List all users                                                                     ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}7)${NC} Show user privileges                                                               ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}10)${NC} Interactive user deletion (guided)                                               ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${WHITE}SYSTEM OPTIONS${NC}                                                                            ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}11)${NC} Backup all users                                                                  ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}12)${NC} Test MySQL connection                                                             ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${RED}0)${NC} Exit                                                                                   ${CYAN}║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo
+    echo -e "${WHITE}Enter your choice (0-12): ${NC}\c"
+    read choice
 
     case "$choice" in
         1)
@@ -861,6 +881,7 @@ show_main_menu() {
             ;;
         *)
             print_error "Invalid choice"
+            sleep 2
             ;;
     esac
 

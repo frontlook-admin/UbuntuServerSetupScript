@@ -10,17 +10,21 @@
 
 set -e
 
-# Color codes for output
+# Color codes for output - Dark theme compatible
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+PURPLE='\033[0;35m'
+WHITE='\033[1;37m'
+GRAY='\033[0;37m'
 NC='\033[0m' # No Color
 
 print_header() {
-    echo -e "${BLUE}=================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}=================================${NC}"
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC} ${WHITE}$1${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════╝${NC}"
 }
 
 print_success() {
@@ -32,7 +36,19 @@ print_error() {
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ $1${NC}"
+    echo -e "${CYAN}ℹ $1${NC}"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠ $1${NC}"
+}
+
+print_highlight() {
+    echo -e "${PURPLE}★ $1${NC}"
+}
+
+print_step() {
+    echo -e "${WHITE}→ $1${NC}"
 }
 
 test_script_execution() {

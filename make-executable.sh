@@ -11,13 +11,15 @@
 
 set -e  # Exit on any error
 
-# Color codes for output
+# Color codes for output - Dark theme compatible
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 PURPLE='\033[0;35m'
+WHITE='\033[1;37m'
+GRAY='\033[0;37m'
 NC='\033[0m' # No Color
 
 # Configuration
@@ -41,9 +43,9 @@ EXCLUDE_PATTERNS=("*.bak" "*.tmp" "*.log" "*.conf" "*.config" "*.txt" "*.md" "*.
 # =============================================================================
 
 print_header() {
-    echo -e "${BLUE}=================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}=================================${NC}"
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC} ${WHITE}$1${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════╝${NC}"
 }
 
 print_success() {
@@ -64,6 +66,18 @@ print_info() {
 
 print_highlight() {
     echo -e "${PURPLE}★ $1${NC}"
+}
+
+print_step() {
+    echo -e "${WHITE}→ $1${NC}"
+}
+
+print_completion() {
+    echo
+    echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║${NC} ${WHITE}✓ COMPLETED: $1${NC}"
+    echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo
 }
 
 log_message() {

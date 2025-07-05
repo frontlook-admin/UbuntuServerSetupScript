@@ -11,13 +11,15 @@
 
 set -e  # Exit on any error
 
-# Color codes for output
+# Color codes for output - Dark theme compatible
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 PURPLE='\033[0;35m'
+WHITE='\033[1;37m'
+GRAY='\033[0;37m'
 NC='\033[0m' # No Color
 
 # Configuration
@@ -35,9 +37,9 @@ COMMON_GROUPS=("sudo" "docker" "www-data" "dialout" "cdrom" "floppy" "audio" "vi
 # =============================================================================
 
 print_header() {
-    echo -e "${BLUE}=================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}=================================${NC}"
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC} ${WHITE}$1${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════╝${NC}"
 }
 
 print_success() {
@@ -1183,26 +1185,43 @@ interactive_delete_user() {
 show_main_menu() {
     clear
     print_header "Ubuntu User Management Script"
-
-    echo "1)  Create basic user"
-    echo "2)  Create user with groups"
-    echo "3)  Create user with sudo access"
-    echo "4)  Create service user"
-    echo "5)  Modify user password"
-    echo "6)  Modify user information"
-    echo "7)  Modify user groups"
-    echo "8)  Modify user sudo access"
-    echo "9)  Delete user"
-    echo "10) List all users"
-    echo "11) Show user information"
-    echo "12) Show available groups"
-    echo "13) Interactive user creation"
-    echo "14) Interactive user modification"
-    echo "15) Interactive user deletion"
-    echo "16) Backup system files"
-    echo "0)  Exit"
     echo
-    read -p "Enter your choice (0-16): " choice
+    echo -e "${WHITE}Please select an option:${NC}"
+    echo
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC} ${GREEN}USER CREATION OPTIONS${NC}                                                                     ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}1)${NC} Create basic user                                                                   ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}2)${NC} Create user with groups                                                             ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}3)${NC} Create user with sudo access                                                        ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}4)${NC} Create service user                                                                 ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}13)${NC} Interactive user creation (guided)                                                ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${PURPLE}USER MODIFICATION OPTIONS${NC}                                                                ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}5)${NC} Modify user password                                                                ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}6)${NC} Modify user information                                                             ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}7)${NC} Modify user groups                                                                  ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}8)${NC} Modify user sudo access                                                             ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}14)${NC} Interactive user modification (guided)                                           ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${BLUE}USER MANAGEMENT OPTIONS${NC}                                                                    ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}9)${NC} Delete user                                                                         ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}10)${NC} List all users                                                                    ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}11)${NC} Show user information                                                             ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}12)${NC} Show available groups                                                             ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}15)${NC} Interactive user deletion (guided)                                               ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${WHITE}SYSTEM OPTIONS${NC}                                                                            ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}16)${NC} Backup system files                                                               ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${RED}0)${NC} Exit                                                                                   ${CYAN}║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo
+    echo -e "${WHITE}Enter your choice (0-16): ${NC}\c"
+    read choice
 
     case "$choice" in
         1)
@@ -1307,6 +1326,7 @@ show_main_menu() {
             ;;
         *)
             print_error "Invalid choice"
+            sleep 2
             ;;
     esac
 
