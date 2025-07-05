@@ -48,7 +48,37 @@ This comprehensive bash script automates the installation and configuration of a
 
 ## Installation
 
-### Quick Start
+### **🚀 Method 1: One-liner Installation (Recommended)**
+
+The fastest way to install everything with default settings:
+
+```bash
+# Complete automatic installation
+curl -sSL https://raw.githubusercontent.com/frontlook-admin/UbuntuServerSetupScript/main/install.sh | sudo bash
+```
+
+### **📥 Method 2: Clone and Run Script**
+
+For interactive installation with options:
+
+```bash
+# Download the clone-and-run script
+wget https://raw.githubusercontent.com/frontlook-admin/UbuntuServerSetupScript/main/clone-and-run.sh
+
+# Make it executable
+chmod +x clone-and-run.sh
+
+# Run with interactive menu
+sudo ./clone-and-run.sh
+
+# Or run with specific options:
+sudo ./clone-and-run.sh --auto        # Automatic mode
+sudo ./clone-and-run.sh --interactive # Interactive mode
+sudo ./clone-and-run.sh --clone-only  # Just clone, don't run
+```
+
+### **📥 Method 3: Direct Download**
+
 ```bash
 # Download the script
 wget https://raw.githubusercontent.com/frontlook-admin/UbuntuServerSetupScript/main/ubuntu-server-complete-setup.sh
@@ -60,7 +90,7 @@ chmod +x ubuntu-server-complete-setup.sh
 sudo ./ubuntu-server-complete-setup.sh
 ```
 
-### Installation Options
+### **📥 Method 4: Installation Options**
 
 #### Full Interactive Installation
 ```bash
