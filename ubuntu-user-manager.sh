@@ -32,6 +32,187 @@ DEFAULT_HOME_DIR="/home"
 # Common system groups
 COMMON_GROUPS=("sudo" "docker" "www-data" "dialout" "cdrom" "floppy" "audio" "video" "plugdev" "users" "netdev" "bluetooth" "scanner" "wireshark")
 
+# FTP configuration
+FTP_CONFIG_FILE="/etc/vsftpd.conf"
+FTP_USER_LIST="/etc/vsftpd.userlist"
+FTP_CHROOT_LIST="/etc/vsftpd.chroot_list"
+
+# =============================================================================
+# FTP SERVER FUNCTIONS
+# =============================================================================
+
+check_ftp_server() {
+    # Check if vsftpd is installed
+    if command -v vsftpd &>/dev/null; then
+        return 0  # FTP server is available
+    else
+        return 1  # FTP server is not available
+    fi
+}
+
+is_ftp_service_running() {
+    if systemctl is-active --quiet vsftpd; then
+        return 0  # FTP service is running
+    else
+        return 1  # FTP service is not running
+    fi
+}
+
+get_ftp_status() {
+    if check_ftp_server; then
+        if is_ftp_service_running; then
+            echo "running"
+        else
+            echo "installed"
+        fi
+    else
+        echo "not_available"
+    fi
+}
+
+add_ftp_user() {
+    local username="$1"
+    local password="$2"
+
+    # Check if FTP server is available
+    if ! check_ftp_server; then
+        print_error "FTP server (vsftpd) is not installed"
+        return 1
+    fi
+
+    # Check if user exists in system
+    if ! user_exists "$username"; then
+        print_error "System user '$username' does not exist"
+        return 1
+    fi
+
+    print_info "Adding FTP access for user '$username'..."
+
+    # Add user to FTP user list
+    if [[ -f "$FTP_USER_LIST" ]]; then
+        if ! grep -q "^$username$" "$FTP_USER_LIST"; then
+            echo "$username" >> "$FTP_USER_LIST"
+            print_success "Added '$username' to FTP user list"
+        else
+            print_warning "User '$username' already in FTP user list"
+        fi
+    else
+        echo "$username" > "$FTP_USER_LIST"
+        print_success "Created FTP user list and added '$username'"
+    fi
+
+    # Add user to chroot list (for security)
+    if [[ -f "$FTP_CHROOT_LIST" ]]; then
+        if ! grep -q "^$username$" "$FTP_CHROOT_LIST"; then
+            echo "$username" >> "$FTP_CHROOT_LIST"
+            print_success "Added '$username' to FTP chroot list"
+        else
+            print_warning "User '$username' already in FTP chroot list"
+        fi
+    else
+        echo "$username" > "$FTP_CHROOT_LIST"
+        print_success "Created FTP chroot list and added '$username'"
+    fi
+
+    # Set proper permissions
+    chmod 600 "$FTP_USER_LIST" 2>/dev/null || true
+    chmod 600 "$FTP_CHROOT_LIST" 2>/dev/null || true
+
+    # Create FTP directory structure
+    local home_dir=$(getent passwd "$username" | cut -d: -f6)
+    if [[ -d "$home_dir" ]]; then
+        # Create ftp directory if it doesn't exist
+        if [[ ! -d "$home_dir/ftp" ]]; then
+            mkdir -p "$home_dir/ftp"
+            chown "$username:$username" "$home_dir/ftp"
+            chmod 755 "$home_dir/ftp"
+            print_success "Created FTP directory for user '$username'"
+        fi
+    fi
+
+    # Restart FTP service if it's running
+    if is_ftp_service_running; then
+        systemctl restart vsftpd &>/dev/null || true
+        print_success "Restarted FTP service"
+    else
+        print_info "FTP service is not running. Start it with: sudo systemctl start vsftpd"
+    fi
+
+    log_message "Added FTP access for user '$username'"
+    return 0
+}
+
+remove_ftp_user() {
+    local username="$1"
+
+    print_info "Removing FTP access for user '$username'..."
+
+    # Remove from FTP user list
+    if [[ -f "$FTP_USER_LIST" ]]; then
+        if grep -q "^$username$" "$FTP_USER_LIST"; then
+            sed -i "/^$username$/d" "$FTP_USER_LIST"
+            print_success "Removed '$username' from FTP user list"
+        else
+            print_warning "User '$username' not found in FTP user list"
+        fi
+    fi
+
+    # Remove from chroot list
+    if [[ -f "$FTP_CHROOT_LIST" ]]; then
+        if grep -q "^$username$" "$FTP_CHROOT_LIST"; then
+            sed -i "/^$username$/d" "$FTP_CHROOT_LIST"
+            print_success "Removed '$username' from FTP chroot list"
+        else
+            print_warning "User '$username' not found in FTP chroot list"
+        fi
+    fi
+
+    # Restart FTP service if it's running
+    if is_ftp_service_running; then
+        systemctl restart vsftpd &>/dev/null || true
+        print_success "Restarted FTP service"
+    fi
+
+    log_message "Removed FTP access for user '$username'"
+    return 0
+}
+
+check_user_ftp_access() {
+    local username="$1"
+
+    if [[ -f "$FTP_USER_LIST" ]] && grep -q "^$username$" "$FTP_USER_LIST"; then
+        return 0  # User has FTP access
+    else
+        return 1  # User does not have FTP access
+    fi
+}
+
+show_ftp_status() {
+    local username="$1"
+
+    print_info "FTP Status for user '$username':"
+    
+    local ftp_status=$(get_ftp_status)
+    case "$ftp_status" in
+        "running")
+            print_success "FTP server is installed and running"
+            ;;
+        "installed")
+            print_warning "FTP server is installed but not running"
+            ;;
+        "not_available")
+            print_error "FTP server is not installed"
+            return 1
+            ;;
+    esac
+
+    if check_user_ftp_access "$username"; then
+        print_success "User '$username' has FTP access"
+    else
+        print_info "User '$username' does not have FTP access"
+    fi
+}
+
 # =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
@@ -252,6 +433,7 @@ create_user_basic() {
     local full_name="$3"
     local shell="$4"
     local home_dir="$5"
+    local enable_ftp="$6"
 
     print_header "Creating Basic User"
 
@@ -300,6 +482,15 @@ create_user_basic() {
     # Force password change on first login
     passwd -e "$username" &>/dev/null
 
+    # Add FTP access if requested and FTP server is available
+    if [[ "$enable_ftp" == "yes" ]] && check_ftp_server; then
+        print_info "Adding FTP access for user '$username'..."
+        add_ftp_user "$username" "$password"
+    elif [[ "$enable_ftp" == "yes" ]] && ! check_ftp_server; then
+        print_warning "FTP server is not available. Skipping FTP access setup"
+        print_info "Install FTP server using: ./ubuntu-server-complete-setup.sh --manage-ftp"
+    fi
+
     log_message "Created basic user '$username' with home directory '$home_dir'"
 
     return 0
@@ -311,11 +502,12 @@ create_user_with_groups() {
     local full_name="$3"
     local groups="$4"
     local shell="$5"
+    local enable_ftp="$6"
 
     print_header "Creating User with Groups"
 
     # Create basic user first
-    if ! create_user_basic "$username" "$password" "$full_name" "$shell"; then
+    if ! create_user_basic "$username" "$password" "$full_name" "$shell" "" "$enable_ftp"; then
         return 1
     fi
 
@@ -349,11 +541,12 @@ create_user_with_sudo() {
     local password="$2"
     local full_name="$3"
     local sudo_type="$4"  # full, limited, passwordless
+    local enable_ftp="$5"
 
     print_header "Creating User with Sudo Access"
 
     # Create basic user first
-    if ! create_user_basic "$username" "$password" "$full_name"; then
+    if ! create_user_basic "$username" "$password" "$full_name" "" "" "$enable_ftp"; then
         return 1
     fi
 
@@ -472,6 +665,12 @@ modify_user_password() {
 
         # Unlock account if it was locked
         passwd -u "$username" &>/dev/null
+
+        # Update FTP password if user has FTP access
+        if check_ftp_server && check_user_ftp_access "$username"; then
+            print_info "Updating FTP password for user '$username'..."
+            add_ftp_user "$username" "$new_password"
+        fi
 
         log_message "Changed password for user '$username'"
         return 0
@@ -804,6 +1003,12 @@ delete_user() {
         print_success "Removed sudoers file for user '$username'"
     fi
 
+    # Remove FTP access if user has it
+    if check_ftp_server && check_user_ftp_access "$username"; then
+        print_info "Removing FTP access for user '$username'..."
+        remove_ftp_user "$username"
+    fi
+
     # Construct userdel command
     local userdel_cmd="userdel"
     if [[ "$remove_home" == "true" ]]; then
@@ -860,6 +1065,21 @@ list_users() {
     awk -F: '$3 >= 1000 {print $1}' /etc/passwd | while read username; do
         echo "$username:$(groups "$username" 2>/dev/null | cut -d: -f2 | tr ' ' ',')"
     done
+
+    # Show FTP access status if FTP server is available
+    if check_ftp_server; then
+        echo ""
+        print_info "FTP access summary:"
+        echo "Username:FTP_Access"
+        echo "=================="
+        awk -F: '$3 >= 1000 {print $1}' /etc/passwd | while read username; do
+            if check_user_ftp_access "$username"; then
+                echo "$username:Yes"
+            else
+                echo "$username:No"
+            fi
+        done
+    fi
 }
 
 show_user_info() {
@@ -913,6 +1133,18 @@ show_user_info() {
         echo "Account is active"
     else
         echo "Account status unknown"
+    fi
+
+    # FTP access information
+    if check_ftp_server; then
+        print_info "FTP Access:"
+        if check_user_ftp_access "$username"; then
+            print_success "User has FTP access"
+        else
+            print_info "User does not have FTP access"
+        fi
+    else
+        print_info "FTP Access: FTP server not available"
     fi
 
     # Process information
@@ -972,6 +1204,22 @@ interactive_create_user() {
     # Get full name
     read -p "Enter full name (optional): " full_name
 
+    # Check FTP access availability and ask for FTP access
+    local enable_ftp="no"
+    if check_ftp_server; then
+        echo
+        print_info "FTP server is available"
+        read -p "Enable FTP access for this user? (y/n): " -n 1 -r ftp_choice
+        echo
+        if [[ $ftp_choice =~ ^[Yy]$ ]]; then
+            enable_ftp="yes"
+        fi
+    else
+        echo
+        print_warning "FTP server is not available"
+        print_info "Install FTP server using: ./ubuntu-server-complete-setup.sh --manage-ftp"
+    fi
+
     # Choose user type
     echo
     echo "Choose user type:"
@@ -983,13 +1231,13 @@ interactive_create_user() {
 
     case "$user_type" in
         1)
-            create_user_basic "$username" "$password" "$full_name"
+            create_user_basic "$username" "$password" "$full_name" "" "" "$enable_ftp"
             ;;
         2)
             show_available_groups
             echo
             read -p "Enter groups (comma-separated): " groups
-            create_user_with_groups "$username" "$password" "$full_name" "$groups"
+            create_user_with_groups "$username" "$password" "$full_name" "$groups" "" "$enable_ftp"
             ;;
         3)
             echo
@@ -1006,7 +1254,7 @@ interactive_create_user() {
                 *) print_error "Invalid choice"; return 1 ;;
             esac
 
-            create_user_with_sudo "$username" "$password" "$full_name" "$sudo_type"
+            create_user_with_sudo "$username" "$password" "$full_name" "$sudo_type" "$enable_ftp"
             ;;
         4)
             read -p "Enter home directory (optional): " home_dir
@@ -1048,7 +1296,12 @@ interactive_modify_user() {
     echo "2) Modify user information"
     echo "3) Modify groups"
     echo "4) Modify sudo access"
-    read -p "Enter choice (1-4): " modify_choice
+    if check_ftp_server; then
+        echo "5) Modify FTP access"
+        read -p "Enter choice (1-5): " modify_choice
+    else
+        read -p "Enter choice (1-4): " modify_choice
+    fi
 
     case "$modify_choice" in
         1)
@@ -1127,6 +1380,48 @@ interactive_modify_user() {
             fi
 
             modify_user_sudo "$username" "$action" "$sudo_type"
+            ;;
+        5)
+            if check_ftp_server; then
+                echo
+                if check_user_ftp_access "$username"; then
+                    echo "User currently has FTP access"
+                    echo "Choose FTP action:"
+                    echo "1) Remove FTP access"
+                    read -p "Enter choice (1): " ftp_action
+                    
+                    case "$ftp_action" in
+                        1)
+                            remove_ftp_user "$username"
+                            ;;
+                        *)
+                            print_error "Invalid choice"
+                            return 1
+                            ;;
+                    esac
+                else
+                    echo "User currently does not have FTP access"
+                    echo "Choose FTP action:"
+                    echo "1) Grant FTP access"
+                    read -p "Enter choice (1): " ftp_action
+                    
+                    case "$ftp_action" in
+                        1)
+                            # Get the user's current password to use for FTP
+                            read -s -p "Enter user's current password for FTP access: " user_password
+                            echo
+                            add_ftp_user "$username" "$user_password"
+                            ;;
+                        *)
+                            print_error "Invalid choice"
+                            return 1
+                            ;;
+                    esac
+                fi
+            else
+                print_error "FTP server not available"
+                return 1
+            fi
             ;;
         *)
             print_error "Invalid choice"

@@ -1071,6 +1071,24 @@ run_mysql_user_manager() {
     fi
 }
 
+# Function to run FTP user management
+run_ftp_user_manager() {
+    print_header "FTP User Management"
+    
+    if [[ -f "ftp-user-manager.sh" ]]; then
+        print_info "Running FTP User Manager..."
+        if [[ -x "ftp-user-manager.sh" ]]; then
+            ./ftp-user-manager.sh "$@"
+        else
+            chmod +x ftp-user-manager.sh
+            ./ftp-user-manager.sh "$@"
+        fi
+    else
+        print_error "ftp-user-manager.sh not found in current directory"
+        exit 1
+    fi
+}
+
 # Function to show user management menu
 show_user_management_menu() {
     while true; do
@@ -1084,18 +1102,19 @@ show_user_management_menu() {
         echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${YELLOW}1)${NC} Ubuntu System User Management                                                        ${CYAN}║${NC}"
         echo -e "${CYAN}║${NC} ${YELLOW}2)${NC} MySQL User Management                                                                ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}3)${NC} FTP User Management                                                                  ${CYAN}║${NC}"
         echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${BLUE}SCRIPT MANAGEMENT${NC}                                                                        ${CYAN}║${NC}"
         echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}3)${NC} Make Scripts Executable                                                              ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}4)${NC} Make Scripts Executable                                                              ${CYAN}║${NC}"
         echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${WHITE}NAVIGATION${NC}                                                                               ${CYAN}║${NC}"
         echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
-        echo -e "${CYAN}║${NC} ${GREEN}4)${NC} Return to Main Menu                                                                  ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} ${RED}5)${NC} Exit                                                                                  ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${GREEN}5)${NC} Return to Main Menu                                                                  ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${RED}6)${NC} Exit                                                                                  ${CYAN}║${NC}"
         echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════╝${NC}"
         echo
-        echo -e "${WHITE}Select option (1-5): ${NC}\c"
+        echo -e "${WHITE}Select option (1-6): ${NC}\c"
         read choice
         
         case $choice in
@@ -1112,21 +1131,27 @@ show_user_management_menu() {
                 read -p "Press Enter to continue..." && continue
                 ;;
             3)
+                print_info "Starting FTP User Management..."
+                run_ftp_user_manager
+                echo
+                read -p "Press Enter to continue..." && continue
+                ;;
+            4)
                 print_info "Making Scripts Executable..."
                 make_scripts_executable
                 echo
                 read -p "Press Enter to continue..." && continue
                 ;;
-            4)
+            5)
                 print_info "Returning to Main Menu..."
                 return 0
                 ;;
-            5)
+            6)
                 print_info "Exiting User Management..."
                 exit 0
                 ;;
             *)
-                print_error "Invalid option. Please select 1-5."
+                print_error "Invalid option. Please select 1-6."
                 sleep 2
                 ;;
         esac
@@ -1179,23 +1204,24 @@ show_main_menu() {
         echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${YELLOW}8)${NC} Manage Ubuntu Users                                                                  ${CYAN}║${NC}"
         echo -e "${CYAN}║${NC} ${YELLOW}9)${NC} Manage MySQL Users                                                                   ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}10)${NC} Show User Management Menu                                                           ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}10)${NC} Manage FTP Users                                                                    ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}11)${NC} Show User Management Menu                                                           ${CYAN}║${NC}"
         echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${BLUE}SCRIPT MANAGEMENT OPTIONS${NC}                                                                  ${CYAN}║${NC}"
         echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}11)${NC} Make All Scripts Executable                                                         ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}12)${NC} Run All Available Scripts                                                           ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}13)${NC} Test Installation Scripts                                                           ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}12)${NC} Make All Scripts Executable                                                         ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}13)${NC} Run All Available Scripts                                                           ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}14)${NC} Test Installation Scripts                                                           ${CYAN}║${NC}"
         echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${WHITE}INFORMATION OPTIONS${NC}                                                                       ${CYAN}║${NC}"
         echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}14)${NC} Show Help/Usage Information                                                         ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}15)${NC} Display System Information                                                          ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}15)${NC} Show Help/Usage Information                                                         ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}16)${NC} Display System Information                                                          ${CYAN}║${NC}"
         echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${RED}0)${NC} Exit                                                                                   ${CYAN}║${NC}"
         echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════════════════════╝${NC}"
         echo
-        echo -e "${WHITE}Enter your choice (0-15): ${NC}\c"
+        echo -e "${WHITE}Enter your choice (0-16): ${NC}\c"
         read choice
         
         case $choice in
@@ -1275,24 +1301,30 @@ show_main_menu() {
                 read -p "Press Enter to continue..." && continue
                 ;;
             10)
+                print_info "Starting FTP User Management..."
+                check_root
+                run_ftp_user_manager
+                read -p "Press Enter to continue..." && continue
+                ;;
+            11)
                 print_info "Showing User Management Menu..."
                 check_root
                 show_user_management_menu
                 read -p "Press Enter to continue..." && continue
                 ;;
-            11)
+            12)
                 print_info "Making All Scripts Executable..."
                 make_scripts_executable
                 read -p "Press Enter to continue..." && continue
                 ;;
-            12)
+            13)
                 print_info "Running All Available Scripts..."
                 check_root
                 check_ubuntu
                 run_all_scripts
                 read -p "Press Enter to continue..." && continue
                 ;;
-            13)
+            14)
                 print_info "Testing Installation Scripts..."
                 if [[ -f "test-installation.sh" ]]; then
                     if [[ -x "test-installation.sh" ]]; then
@@ -1307,7 +1339,7 @@ show_main_menu() {
                 fi
                 read -p "Press Enter to continue..." && continue
                 ;;
-            14)
+            15)
                 print_info "Showing Help Information..."
                 echo "Usage: $0 [options]"
                 echo
@@ -1326,6 +1358,7 @@ show_main_menu() {
                 echo "USER MANAGEMENT OPTIONS:"
                 echo "  --manage-users      Run Ubuntu user management"
                 echo "  --manage-mysql      Run MySQL user management"
+                echo "  --manage-ftp        Run FTP user management"
                 echo "  --user-menu         Show user management menu"
                 echo
                 echo "SCRIPT MANAGEMENT OPTIONS:"
@@ -1336,6 +1369,7 @@ show_main_menu() {
                 echo "  • ubuntu-server-complete-setup.sh - Complete server setup script"
                 echo "  • ubuntu-user-manager.sh     - Ubuntu system user management"
                 echo "  • mysql-user-manager.sh      - MySQL user management"
+                echo "  • ftp-user-manager.sh        - FTP server and user management"
                 echo "  • make-executable.sh         - Script permission manager"
                 echo
                 echo "EXAMPLES:"
@@ -1344,11 +1378,12 @@ show_main_menu() {
                 echo "  $0 --make-executable         # Make all scripts executable"
                 echo "  $0 --manage-users            # Manage Ubuntu users"
                 echo "  $0 --manage-mysql            # Manage MySQL users"
+                echo "  $0 --manage-ftp              # Manage FTP users"
                 echo "  $0 --user-menu               # Show user management menu"
                 echo "  $0 --run-all                 # Run everything"
                 read -p "Press Enter to continue..." && continue
                 ;;
-            15)
+            16)
                 print_info "Displaying System Information..."
                 display_system_info
                 read -p "Press Enter to continue..." && continue
@@ -1358,7 +1393,7 @@ show_main_menu() {
                 exit 0
                 ;;
             *)
-                print_error "Invalid option. Please select 0-15."
+                print_error "Invalid option. Please select 0-16."
                 sleep 2
                 ;;
         esac
@@ -1389,6 +1424,7 @@ case "${1:-}" in
         echo "USER MANAGEMENT OPTIONS:"
         echo "  --manage-users      Run Ubuntu user management"
         echo "  --manage-mysql      Run MySQL user management"
+        echo "  --manage-ftp        Run FTP user management"
         echo "  --user-menu         Show user management menu"
         echo
         echo "SCRIPT MANAGEMENT OPTIONS:"
@@ -1399,6 +1435,7 @@ case "${1:-}" in
         echo "  • ubuntu-server-complete-setup.sh - Complete server setup script"
         echo "  • ubuntu-user-manager.sh     - Ubuntu system user management"
         echo "  • mysql-user-manager.sh      - MySQL user management"
+        echo "  • ftp-user-manager.sh        - FTP server and user management"
         echo "  • make-executable.sh         - Script permission manager"
         echo
         echo "EXAMPLES:"
@@ -1407,6 +1444,7 @@ case "${1:-}" in
         echo "  $0 --make-executable         # Make all scripts executable"
         echo "  $0 --manage-users            # Manage Ubuntu users"
         echo "  $0 --manage-mysql            # Manage MySQL users"
+        echo "  $0 --manage-ftp              # Manage FTP users"
         echo "  $0 --user-menu               # Show user management menu"
         echo "  $0 --run-all                 # Run everything"
         exit 0
@@ -1477,6 +1515,13 @@ case "${1:-}" in
         check_root
         shift  # Remove the --manage-mysql argument
         run_mysql_user_manager "$@"
+        exit 0
+        ;;
+    --manage-ftp)
+        print_info "Running FTP User Management"
+        check_root
+        shift  # Remove the --manage-ftp argument
+        run_ftp_user_manager "$@"
         exit 0
         ;;
     --user-menu)
