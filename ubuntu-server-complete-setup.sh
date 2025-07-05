@@ -1073,7 +1073,7 @@ case "${1:-}" in
         echo "  --run-all           Run all available scripts and tools"
         echo
         echo "AVAILABLE SCRIPTS:"
-        echo "  • install-mysql-dotnet.sh    - Main installation script"
+        echo "  • ubuntu-server-complete-setup.sh - Complete server setup script"
         echo "  • ubuntu-user-manager.sh     - Ubuntu system user management"
         echo "  • mysql-user-manager.sh      - MySQL user management"
         echo "  • make-executable.sh         - Script permission manager"

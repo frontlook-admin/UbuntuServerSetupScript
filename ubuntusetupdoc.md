@@ -54,25 +54,25 @@ This automated installation script provides a streamlined way to install and con
 ### 1. Download the Script
 ```bash
 # Download directly
-wget https://raw.githubusercontent.com/your-repo/install-mysql-dotnet.sh
+wget https://raw.githubusercontent.com/your-repo/ubuntu-server-complete-setup.sh
 
 # Or create manually
-sudo nano install-mysql-dotnet.sh
+sudo nano ubuntu-server-complete-setup.sh
 # Copy and paste the script content
 ```
 
 ### 2. Make Executable
 ```bash
-sudo chmod +x install-mysql-dotnet.sh
+sudo chmod +x ubuntu-server-complete-setup.sh
 ```
 
 ### 3. Run Installation
 ```bash
 # Interactive installation (recommended for first-time users)
-sudo ./install-mysql-dotnet.sh
+sudo ./ubuntu-server-complete-setup.sh
 
 # Automatic installation with defaults
-sudo ./install-mysql-dotnet.sh --auto
+sudo ./ubuntu-server-complete-setup.sh --auto
 ```
 
 ---
@@ -81,7 +81,7 @@ sudo ./install-mysql-dotnet.sh --auto
 
 ### Interactive Mode (Default)
 ```bash
-sudo ./install-mysql-dotnet.sh
+sudo ./ubuntu-server-complete-setup.sh
 ```
 - Prompts for configuration options
 - Allows custom MySQL root password
@@ -90,7 +90,7 @@ sudo ./install-mysql-dotnet.sh
 
 ### Automatic Mode
 ```bash
-sudo ./install-mysql-dotnet.sh --auto
+sudo ./ubuntu-server-complete-setup.sh --auto
 ```
 - Uses default settings
 - Generates random MySQL root password
@@ -100,15 +100,15 @@ sudo ./install-mysql-dotnet.sh --auto
 ### Component-Specific Installation
 ```bash
 # Install only MySQL
-sudo ./install-mysql-dotnet.sh --mysql-only
+sudo ./ubuntu-server-complete-setup.sh --mysql-only
 
 # Install only .NET
-sudo ./install-mysql-dotnet.sh --dotnet-only
+sudo ./ubuntu-server-complete-setup.sh --dotnet-only
 ```
 
 ### Help
 ```bash
-sudo ./install-mysql-dotnet.sh --help
+sudo ./ubuntu-server-complete-setup.sh --help
 ```
 
 ---
@@ -331,7 +331,7 @@ sudo rm -rf /etc/mysql /var/lib/mysql
 sudo deluser mysql
 
 # Re-run the script
-sudo ./install-mysql-dotnet.sh --mysql-only
+sudo ./ubuntu-server-complete-setup.sh --mysql-only
 ```
 
 #### 2. .NET Installation Fails
@@ -344,19 +344,19 @@ sudo rm /etc/apt/sources.list.d/microsoft-prod.list
 sudo apt update
 
 # Re-run the script
-sudo ./install-mysql-dotnet.sh --dotnet-only
+sudo ./ubuntu-server-complete-setup.sh --dotnet-only
 ```
 
 #### 3. Permission Denied Errors
 ```bash
 # Check script permissions
-ls -la install-mysql-dotnet.sh
+ls -la ubuntu-server-complete-setup.sh
 
 # Fix permissions
-sudo chmod +x install-mysql-dotnet.sh
+sudo chmod +x ubuntu-server-complete-setup.sh
 
 # Run as root
-sudo ./install-mysql-dotnet.sh
+sudo ./ubuntu-server-complete-setup.sh
 ```
 
 #### 4. MySQL Connection Issues

@@ -1,4 +1,4 @@
-# Ubuntu Server Complete Development Environment Setup Script
+# Ubuntu Server Complete Development Environment Setup Script (`ubuntu-server-complete-setup.sh`)
 
 ## Overview
 
@@ -51,20 +51,20 @@ This comprehensive bash script automates the installation and configuration of a
 ### Quick Start
 ```bash
 # Download the script
-wget https://raw.githubusercontent.com/yourusername/UbuntuServerSetupScript/main/install-mysql-dotnet.sh
+wget https://raw.githubusercontent.com/yourusername/UbuntuServerSetupScript/main/ubuntu-server-complete-setup.sh
 
 # Make it executable
-chmod +x install-mysql-dotnet.sh
+chmod +x ubuntu-server-complete-setup.sh
 
 # Run with full installation
-sudo ./install-mysql-dotnet.sh
+sudo ./ubuntu-server-complete-setup.sh
 ```
 
 ### Installation Options
 
 #### Full Interactive Installation
 ```bash
-sudo ./install-mysql-dotnet.sh
+sudo ./ubuntu-server-complete-setup.sh
 ```
 - Prompts for all configuration options
 - Allows customization of each component
@@ -72,7 +72,7 @@ sudo ./install-mysql-dotnet.sh
 
 #### Automatic Installation (Default Settings)
 ```bash
-sudo ./install-mysql-dotnet.sh --auto
+sudo ./ubuntu-server-complete-setup.sh --auto
 ```
 - Uses default settings for all components
 - No interactive prompts
@@ -81,31 +81,31 @@ sudo ./install-mysql-dotnet.sh --auto
 #### Component-Specific Installation
 ```bash
 # MySQL only
-sudo ./install-mysql-dotnet.sh --mysql-only
+sudo ./ubuntu-server-complete-setup.sh --mysql-only
 
 # .NET only
-sudo ./install-mysql-dotnet.sh --dotnet-only
+sudo ./ubuntu-server-complete-setup.sh --dotnet-only
 
 # Git/GitHub only
-sudo ./install-mysql-dotnet.sh --git-only
+sudo ./ubuntu-server-complete-setup.sh --git-only
 
 # Monitoring tools only
-sudo ./install-mysql-dotnet.sh --monitoring-only
+sudo ./ubuntu-server-complete-setup.sh --monitoring-only
 
 # Security configuration only
-sudo ./install-mysql-dotnet.sh --security-only
+sudo ./ubuntu-server-complete-setup.sh --security-only
 ```
 
 #### Selective Installation
 ```bash
 # Skip Git/GitHub configuration
-sudo ./install-mysql-dotnet.sh --no-git
+sudo ./ubuntu-server-complete-setup.sh --no-git
 
 # Skip monitoring tools
-sudo ./install-mysql-dotnet.sh --no-monitoring
+sudo ./ubuntu-server-complete-setup.sh --no-monitoring
 
 # Skip all interactive prompts
-sudo ./install-mysql-dotnet.sh --no-interactive
+sudo ./ubuntu-server-complete-setup.sh --no-interactive
 ```
 
 ## Command Line Options
@@ -144,7 +144,7 @@ sudo ./install-mysql-dotnet.sh --no-interactive
 
 The main script now integrates functionality from all scripts in the folder:
 
-- **`install-mysql-dotnet.sh`** - Main installation script with all features
+- **`ubuntu-server-complete-setup.sh`** - Main installation script with all features
 - **`ubuntu-user-manager.sh`** - Ubuntu system user management
 - **`mysql-user-manager.sh`** - MySQL user management  
 - **`make-executable.sh`** - Script permission manager
@@ -204,52 +204,52 @@ The main script now integrates functionality from all scripts in the folder:
 #### User Management
 ```bash
 # Run Ubuntu user management
-sudo ./install-mysql-dotnet.sh --manage-users
+sudo ./ubuntu-server-complete-setup.sh --manage-users
 
 # Run MySQL user management
-sudo ./install-mysql-dotnet.sh --manage-mysql
+sudo ./ubuntu-server-complete-setup.sh --manage-mysql
 
 # Show user management menu
-sudo ./install-mysql-dotnet.sh --user-menu
+sudo ./ubuntu-server-complete-setup.sh --user-menu
 ```
 
 #### Script Management
 ```bash
 # Make all scripts executable
-sudo ./install-mysql-dotnet.sh --make-executable
+sudo ./ubuntu-server-complete-setup.sh --make-executable
 
 # Run complete installation with all tools
-sudo ./install-mysql-dotnet.sh --run-all
+sudo ./ubuntu-server-complete-setup.sh --run-all
 ```
 
 #### Ubuntu User Management Examples
 ```bash
 # Create new user with sudo privileges
-sudo ./install-mysql-dotnet.sh --manage-users --create-user myuser --groups sudo
+sudo ./ubuntu-server-complete-setup.sh --manage-users --create-user myuser --groups sudo
 
 # Create developer user with Docker access
-sudo ./install-mysql-dotnet.sh --manage-users --create-user developer --groups docker,sudo
+sudo ./ubuntu-server-complete-setup.sh --manage-users --create-user developer --groups docker,sudo
 
 # List all users
-sudo ./install-mysql-dotnet.sh --manage-users --list-users
+sudo ./ubuntu-server-complete-setup.sh --manage-users --list-users
 
 # Delete user
-sudo ./install-mysql-dotnet.sh --manage-users --delete-user olduser
+sudo ./ubuntu-server-complete-setup.sh --manage-users --delete-user olduser
 ```
 
 #### MySQL User Management Examples
 ```bash
 # Create MySQL user with database access
-sudo ./install-mysql-dotnet.sh --manage-mysql --create-user appuser --database myapp
+sudo ./ubuntu-server-complete-setup.sh --manage-mysql --create-user appuser --database myapp
 
 # Create read-only user
-sudo ./install-mysql-dotnet.sh --manage-mysql --create-user readonly --privileges SELECT
+sudo ./ubuntu-server-complete-setup.sh --manage-mysql --create-user readonly --privileges SELECT
 
 # List MySQL users
-sudo ./install-mysql-dotnet.sh --manage-mysql --list-users
+sudo ./ubuntu-server-complete-setup.sh --manage-mysql --list-users
 
 # Delete MySQL user
-sudo ./install-mysql-dotnet.sh --manage-mysql --delete-user olduser
+sudo ./ubuntu-server-complete-setup.sh --manage-mysql --delete-user olduser
 ```
 
 ### After Installation
