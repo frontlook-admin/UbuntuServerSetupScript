@@ -66,6 +66,11 @@ print_info() {
 }
 
 log_message() {
+    # Ensure log file exists before trying to log
+    if [[ ! -f "$LOG_FILE" ]]; then
+        mkdir -p /var/log
+        touch "$LOG_FILE"
+    fi
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
 }
 
