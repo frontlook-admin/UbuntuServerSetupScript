@@ -51,7 +51,7 @@ This comprehensive bash script automates the installation and configuration of a
 ### Quick Start
 ```bash
 # Download the script
-wget https://raw.githubusercontent.com/yourusername/UbuntuServerSetupScript/main/ubuntu-server-complete-setup.sh
+wget https://raw.githubusercontent.com/frontlook-admin/UbuntuServerSetupScript/main/ubuntu-server-complete-setup.sh
 
 # Make it executable
 chmod +x ubuntu-server-complete-setup.sh
