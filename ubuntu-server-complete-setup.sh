@@ -861,6 +861,7 @@ interactive_config() {
 
 main() {
     print_header "MySQL and .NET Installation Script"
+    print_info "Main function started successfully"
 
     # Create log file
     mkdir -p /var/log
@@ -951,6 +952,7 @@ make_scripts_executable() {
     done
     
     print_success "Processed $processed_count script files"
+    print_info "make_scripts_executable function completed successfully"
 }
 
 # Function to run Ubuntu user management
@@ -1201,7 +1203,10 @@ case "${1:-}" in
     "")
         # Run main installation
         make_scripts_executable
+        echo "Scripts made executable. Starting main installation..."
+        echo "About to call main function..."
         main
+        echo "Main function completed"
         ;;
     *)
         echo "Unknown option: $1"
