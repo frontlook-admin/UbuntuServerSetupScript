@@ -1934,14 +1934,55 @@ create_dotnet_systemd_service() {
     
     print_info "Creating systemd service..."
     
-    # Find the main .dll file
+    # Find the main executable file
+    local main_executable=""
+    local exec_command=""
+    
+    # First, try to find .dll files (traditional .NET deployment)
     local main_dll=$(find "$app_path" -name "*.dll" -type f | head -1)
-    if [[ -z "$main_dll" ]]; then
-        print_error "No .dll file found in $app_path"
-        return 1
+    if [[ -n "$main_dll" ]]; then
+        local dll_name=$(basename "$main_dll")
+        main_executable="$dll_name"
+        exec_command="/usr/bin/dotnet $dll_name"
+        print_info "Found .dll file: $dll_name"
+    else
+        # Look for Linux executable files (self-contained deployment)
+        local executable_files=$(find "$app_path" -type f -executable | grep -E "(^[^/]*$|/[^/]*$)" | head -5)
+        
+        # Filter for potential .NET executables
+        for file in $executable_files; do
+            if [[ -f "$file" ]] && file "$file" | grep -q "ELF.*executable"; then
+                # Check if it's likely a .NET executable by looking for related files
+                local basename_file=$(basename "$file")
+                if [[ -f "$app_path/$basename_file.deps.json" ]] || [[ -f "$app_path/$basename_file.runtimeconfig.json" ]] || [[ -f "$app_path/appsettings.json" ]]; then
+                    main_executable="$basename_file"
+                    exec_command="$app_path/$basename_file"
+                    print_info "Found .NET executable: $basename_file"
+                    break
+                fi
+            fi
+        done
     fi
     
-    local dll_name=$(basename "$main_dll")
+    # If no executable found, try to find by app name
+    if [[ -z "$main_executable" ]]; then
+        # Try to find executable with same name as app
+        for potential_name in "$app_name" "${app_name,,}" "${app_name^}"; do
+            if [[ -f "$app_path/$potential_name" ]] && [[ -x "$app_path/$potential_name" ]]; then
+                main_executable="$potential_name"
+                exec_command="$app_path/$potential_name"
+                print_info "Found executable by name: $potential_name"
+                break
+            fi
+        done
+    fi
+    
+    if [[ -z "$main_executable" ]]; then
+        print_error "No .NET executable found in $app_path"
+        print_info "Available files:"
+        ls -la "$app_path/"
+        return 1
+    fi
     
     # Create systemd service file
     cat > "$SYSTEMD_SERVICE_DIR/dotnet-$app_name.service" <<EOF
@@ -1952,7 +1993,7 @@ After=network.target
 [Service]
 Type=notify
 WorkingDirectory=$app_path
-ExecStart=/usr/bin/dotnet $dll_name
+ExecStart=$exec_command
 Restart=always
 RestartSec=10
 KillSignal=SIGINT
@@ -1970,7 +2011,7 @@ EOF
     systemctl daemon-reload
     systemctl enable "dotnet-$app_name.service"
     
-    print_success "Systemd service created and enabled"
+    print_success "Systemd service created and enabled for: $main_executable"
 }
 
 # Configure Nginx for .NET application
