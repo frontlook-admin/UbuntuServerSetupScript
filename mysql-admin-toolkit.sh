@@ -1290,6 +1290,29 @@ show_main_menu() {
             ;;
         12)
             echo
+            # Check if remote connection is configured
+            if [[ -z "$REMOTE_MYSQL_HOST" ]]; then
+                print_warning "Remote MySQL connection not configured"
+                read -p "Would you like to configure the remote connection now? (y/n): " -n 1 -r
+                echo
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    if ! setup_remote_mysql_connection; then
+                        print_error "Remote connection setup failed"
+                        continue
+                    fi
+                else
+                    print_info "Remote connection setup skipped"
+                    continue
+                fi
+            fi
+            
+            # Test remote connection
+            if ! test_remote_mysql_connection; then
+                print_error "Cannot connect to remote MySQL server"
+                print_info "Please check your remote connection configuration (Option 11)"
+                continue
+            fi
+            
             print_info "Available databases on remote server:"
             list_remote_databases
             echo
@@ -1300,6 +1323,29 @@ show_main_menu() {
             ;;
         13)
             echo
+            # Check if remote connection is configured
+            if [[ -z "$REMOTE_MYSQL_HOST" ]]; then
+                print_warning "Remote MySQL connection not configured"
+                read -p "Would you like to configure the remote connection now? (y/n): " -n 1 -r
+                echo
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    if ! setup_remote_mysql_connection; then
+                        print_error "Remote connection setup failed"
+                        continue
+                    fi
+                else
+                    print_info "Remote connection setup skipped"
+                    continue
+                fi
+            fi
+            
+            # Test remote connection
+            if ! test_remote_mysql_connection; then
+                print_error "Cannot connect to remote MySQL server"
+                print_info "Please check your remote connection configuration (Option 11)"
+                continue
+            fi
+            
             print_info "Available databases on local server:"
             list_local_databases
             echo
@@ -1310,6 +1356,29 @@ show_main_menu() {
             ;;
         14)
             echo
+            # Check if remote connection is configured
+            if [[ -z "$REMOTE_MYSQL_HOST" ]]; then
+                print_warning "Remote MySQL connection not configured"
+                read -p "Would you like to configure the remote connection now? (y/n): " -n 1 -r
+                echo
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    if ! setup_remote_mysql_connection; then
+                        print_error "Remote connection setup failed"
+                        continue
+                    fi
+                else
+                    print_info "Remote connection setup skipped"
+                    continue
+                fi
+            fi
+            
+            # Test remote connection
+            if ! test_remote_mysql_connection; then
+                print_error "Cannot connect to remote MySQL server"
+                print_info "Please check your remote connection configuration (Option 11)"
+                continue
+            fi
+            
             read -p "Enter local database name: " local_db
             read -p "Enter remote database name: " remote_db
             echo
@@ -1330,6 +1399,29 @@ show_main_menu() {
             interactive_clone_database
             ;;
         16)
+            # Check if remote connection is configured
+            if [[ -z "$REMOTE_MYSQL_HOST" ]]; then
+                print_warning "Remote MySQL connection not configured"
+                read -p "Would you like to configure the remote connection now? (y/n): " -n 1 -r
+                echo
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    if ! setup_remote_mysql_connection; then
+                        print_error "Remote connection setup failed"
+                        continue
+                    fi
+                else
+                    print_info "Remote connection setup skipped"
+                    continue
+                fi
+            fi
+            
+            # Test remote connection
+            if ! test_remote_mysql_connection; then
+                print_error "Cannot connect to remote MySQL server"
+                print_info "Please check your remote connection configuration (Option 11)"
+                continue
+            fi
+            
             list_remote_databases
             ;;
         17)
@@ -1339,6 +1431,23 @@ show_main_menu() {
             test_mysql_connection
             ;;
         19)
+            # Check if remote connection is configured
+            if [[ -z "$REMOTE_MYSQL_HOST" ]]; then
+                print_warning "Remote MySQL connection not configured"
+                read -p "Would you like to configure the remote connection now? (y/n): " -n 1 -r
+                echo
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    if ! setup_remote_mysql_connection; then
+                        print_error "Remote connection setup failed"
+                        continue
+                    fi
+                else
+                    print_info "Remote connection setup skipped"
+                    print_info "Use Option 11 to configure remote connection"
+                    continue
+                fi
+            fi
+            
             test_remote_mysql_connection
             ;;
         0)
