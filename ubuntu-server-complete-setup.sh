@@ -2909,8 +2909,39 @@ validate_source_path() {
     fi
     
     # Check if it's a .NET application directory
-    if [[ ! -f "$source_path"/*.dll ]] && [[ ! -f "$source_path"/*.exe ]]; then
-        print_error "Directory does not appear to contain a .NET application (no .dll or .exe files found)"
+    # Look for .dll, .exe files, or executable files that might be .NET applications
+    local has_dotnet_files=false
+    
+    # Check for .dll or .exe files
+    if find "$source_path" -maxdepth 1 -name "*.dll" -o -name "*.exe" | grep -q .; then
+        has_dotnet_files=true
+    fi
+    
+    # Check for executable files (Linux .NET applications)
+    if [[ "$has_dotnet_files" == "false" ]]; then
+        # Look for executable files that might be .NET applications
+        local executable_files=$(find "$source_path" -maxdepth 1 -type f -executable | head -5)
+        if [[ -n "$executable_files" ]]; then
+            # Check if any executable file is a .NET application by looking for ELF format
+            while IFS= read -r exe_file; do
+                if [[ -f "$exe_file" ]] && file "$exe_file" | grep -q "ELF.*executable"; then
+                    has_dotnet_files=true
+                    break
+                fi
+            done <<< "$executable_files"
+        fi
+    fi
+    
+    # Additional check for .NET specific files
+    if [[ "$has_dotnet_files" == "false" ]]; then
+        if find "$source_path" -maxdepth 1 -name "*.deps.json" -o -name "*.runtimeconfig.json" -o -name "appsettings.json" | grep -q .; then
+            has_dotnet_files=true
+        fi
+    fi
+    
+    if [[ "$has_dotnet_files" == "false" ]]; then
+        print_error "Directory does not appear to contain a .NET application"
+        print_info "Looking for: .dll, .exe files, executable files, or .NET configuration files"
         return 1
     fi
     
