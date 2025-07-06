@@ -43,6 +43,7 @@ DOTNET_VERSION=""
 USE_HTTPS=""
 SSL_CERT_PATH=""
 SSL_KEY_PATH=""
+SSL_CERT_REGISTRY="/etc/ssl/dotnet-apps/.cert_registry"
 
 # =============================================================================
 # UTILITY FUNCTIONS
@@ -78,42 +79,102 @@ log_message() {
 # HTTPS CONFIGURATION FUNCTIONS
 # =============================================================================
 
-list_ssl_certificates() {
+# SSL Certificate Registry Management
+register_ssl_certificate() {
+    local cert_name="$1"
+    local cert_path="$2"
+    local key_path="$3"
+    local domain="$4"
+    local created_date="$(date '+%Y-%m-%d %H:%M:%S')"
+    
+    # Create SSL directory and registry if they don't exist
+    mkdir -p "$(dirname "$SSL_CERT_REGISTRY")"
+    
+    # Add entry to registry
+    echo "$cert_name|$cert_path|$key_path|$domain|$created_date" >> "$SSL_CERT_REGISTRY"
+    
+    print_info "Certificate registered: $cert_name"
+}
+
+remove_expired_certificates() {
     local ssl_dir="/etc/ssl/dotnet-apps"
     
-    print_header "Available SSL Certificates"
+    if [[ ! -f "$SSL_CERT_REGISTRY" ]]; then
+        return 0
+    fi
     
-    if [[ ! -d "$ssl_dir" ]]; then
-        print_info "No SSL certificates directory found"
+    print_info "Checking for expired certificates..."
+    
+    # Create temp file for updated registry
+    local temp_registry=$(mktemp)
+    
+    # Read registry and check each certificate
+    while IFS='|' read -r cert_name cert_path key_path domain created_date; do
+        if [[ -f "$cert_path" ]]; then
+            # Check if certificate is expired
+            if openssl x509 -in "$cert_path" -noout -checkend 0 &>/dev/null; then
+                # Certificate is valid, keep it
+                echo "$cert_name|$cert_path|$key_path|$domain|$created_date" >> "$temp_registry"
+            else
+                # Certificate is expired, remove it
+                print_info "Removing expired certificate: $cert_name"
+                rm -f "$cert_path" "$key_path" 2>/dev/null || true
+            fi
+        fi
+    done < "$SSL_CERT_REGISTRY"
+    
+    # Replace registry with updated version
+    mv "$temp_registry" "$SSL_CERT_REGISTRY"
+}
+
+get_available_certificates() {
+    local ssl_dir="/etc/ssl/dotnet-apps"
+    
+    if [[ ! -f "$SSL_CERT_REGISTRY" ]]; then
+        return 0
+    fi
+    
+    # Remove expired certificates first
+    remove_expired_certificates
+    
+    # Return available certificates
+    if [[ -f "$SSL_CERT_REGISTRY" && -s "$SSL_CERT_REGISTRY" ]]; then
+        cat "$SSL_CERT_REGISTRY"
+    fi
+}
+
+list_ssl_certificates() {
+    print_header "Available SSL Certificates (Non-Expired)"
+    
+    # Remove expired certificates first
+    remove_expired_certificates
+    
+    local cert_registry_data=$(get_available_certificates)
+    
+    if [[ -z "$cert_registry_data" ]]; then
+        print_info "No SSL certificates found"
         return 0
     fi
     
     local certs_found=0
     
-    # List all certificate files
-    if ls "$ssl_dir"/*.crt &>/dev/null; then
-        for cert_file in "$ssl_dir"/*.crt; do
-            local cert_name=$(basename "$cert_file" .crt)
-            local key_file="${ssl_dir}/${cert_name}.key"
-            
-            if [[ -f "$key_file" ]]; then
-                echo
-                print_info "Certificate: $cert_name"
-                echo "  Certificate file: $cert_file"
-                echo "  Key file: $key_file"
-                echo "  Issued for: $(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/subject=//' | sed 's/.*CN=//')"
-                echo "  Expires: $(openssl x509 -in "$cert_file" -noout -dates 2>/dev/null | grep notAfter | sed 's/notAfter=//')"
-                echo "  Valid: $(openssl x509 -in "$cert_file" -noout -checkend 0 &>/dev/null && echo "Yes" || echo "No (expired)")"
-                certs_found=$((certs_found + 1))
-            fi
-        done
-    fi
+    # List certificates from registry
+    echo "$cert_registry_data" | while IFS='|' read -r cert_name cert_path key_path domain created_date; do
+        if [[ -f "$cert_path" && -f "$key_path" ]]; then
+            echo
+            print_info "Certificate: $cert_name"
+            echo "  Certificate file: $cert_path"
+            echo "  Key file: $key_path"
+            echo "  Domain: $domain"
+            echo "  Created: $created_date"
+            echo "  Expires: $(openssl x509 -in "$cert_path" -noout -dates 2>/dev/null | grep notAfter | sed 's/notAfter=//')"
+            echo "  Days remaining: $(openssl x509 -in "$cert_path" -noout -dates 2>/dev/null | grep notAfter | sed 's/notAfter=//' | xargs -I {} date -d {} '+%s' | xargs -I {} expr \( {} - $(date '+%s') \) / 86400)"
+            certs_found=$((certs_found + 1))
+        fi
+    done
     
-    if [[ $certs_found -eq 0 ]]; then
-        print_info "No SSL certificates found"
-    else
-        print_info "Found $certs_found SSL certificate(s)"
-    fi
+    local total_certs=$(echo "$cert_registry_data" | wc -l)
+    print_info "Found $total_certs valid SSL certificate(s)"
     
     return 0
 }
@@ -139,28 +200,44 @@ create_ssl_certificate() {
         return 1
     fi
     
-    # Check if certificate already exists
-    local cert_path="$ssl_dir/${cert_name}.crt"
-    local key_path="$ssl_dir/${cert_name}.key"
-    
-    if [[ -f "$cert_path" ]]; then
-        print_warning "Certificate '$cert_name' already exists"
-        read -p "Overwrite existing certificate? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_info "Certificate creation cancelled"
-            return 0
+    # Check if certificate already exists in registry
+    if [[ -f "$SSL_CERT_REGISTRY" ]]; then
+        if grep -q "^$cert_name|" "$SSL_CERT_REGISTRY"; then
+            print_warning "Certificate '$cert_name' already exists in registry"
+            read -p "Overwrite existing certificate? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                print_info "Certificate creation cancelled"
+                return 0
+            fi
+            
+            # Remove existing certificate from registry
+            grep -v "^$cert_name|" "$SSL_CERT_REGISTRY" > "${SSL_CERT_REGISTRY}.tmp" && mv "${SSL_CERT_REGISTRY}.tmp" "$SSL_CERT_REGISTRY"
         fi
     fi
+    
+    # Set certificate paths
+    local cert_path="$ssl_dir/${cert_name}.crt"
+    local key_path="$ssl_dir/${cert_name}.key"
     
     # Get domain name
     read -p "Enter domain name or IP address [localhost]: " domain
     domain=${domain:-localhost}
     
-    # Create certificate
-    print_info "Creating SSL certificate for domain: $domain"
+    # Get certificate validity period
+    read -p "Enter certificate validity in days [365]: " validity_days
+    validity_days=${validity_days:-365}
     
-    if ! openssl req -x509 -newkey rsa:4096 -keyout "$key_path" -out "$cert_path" -days 365 -nodes -subj "/CN=$domain"; then
+    # Validate validity days
+    if [[ ! "$validity_days" =~ ^[0-9]+$ ]]; then
+        print_error "Invalid validity period. Must be a number."
+        return 1
+    fi
+    
+    # Create certificate
+    print_info "Creating SSL certificate for domain: $domain (valid for $validity_days days)"
+    
+    if ! openssl req -x509 -newkey rsa:4096 -keyout "$key_path" -out "$cert_path" -days "$validity_days" -nodes -subj "/CN=$domain"; then
         print_error "Failed to create SSL certificate"
         return 1
     fi
@@ -170,10 +247,102 @@ create_ssl_certificate() {
     chmod 644 "$cert_path"
     chmod 600 "$key_path"
     
+    # Register certificate
+    register_ssl_certificate "$cert_name" "$cert_path" "$key_path" "$domain"
+    
     print_success "SSL certificate created successfully"
     print_info "Certificate: $cert_path"
     print_info "Private Key: $key_path"
     print_info "Domain: $domain"
+    print_info "Valid for: $validity_days days"
+    
+    return 0
+}
+
+remove_ssl_certificate() {
+    print_header "Remove SSL Certificate"
+    
+    # Remove expired certificates first
+    remove_expired_certificates
+    
+    # Get available certificates
+    local cert_registry_data=$(get_available_certificates)
+    
+    if [[ -z "$cert_registry_data" ]]; then
+        print_info "No SSL certificates found"
+        return 0
+    fi
+    
+    print_info "Available certificates:"
+    echo
+    
+    # Display available certificates with numbers
+    local cert_count=0
+    echo "$cert_registry_data" | while IFS='|' read -r cert_name cert_path key_path cert_domain created_date; do
+        cert_count=$((cert_count + 1))
+        
+        echo "$cert_count) $cert_name (domain: $cert_domain)"
+        echo "   Created: $created_date"
+        echo "   Expires: $(openssl x509 -in "$cert_path" -noout -dates 2>/dev/null | grep notAfter | sed 's/notAfter=//')"
+        echo "   Certificate: $cert_path"
+        echo "   Key: $key_path"
+        echo
+    done
+    
+    # Get the actual count
+    local total_certs=$(echo "$cert_registry_data" | wc -l)
+    
+    if [[ $total_certs -eq 0 ]]; then
+        print_info "No certificates to remove"
+        return 0
+    fi
+    
+    read -p "Select certificate number to remove (1-$total_certs): " -r
+    local cert_choice=${REPLY:-0}
+    
+    if [[ ! "$cert_choice" =~ ^[0-9]+$ ]] || [[ "$cert_choice" -lt 1 ]] || [[ "$cert_choice" -gt "$total_certs" ]]; then
+        print_error "Invalid certificate selection"
+        return 1
+    fi
+    
+    # Get selected certificate info
+    local selected_cert_info=$(echo "$cert_registry_data" | sed -n "${cert_choice}p")
+    IFS='|' read -r selected_cert_name selected_cert_path selected_key_path selected_domain selected_created_date <<< "$selected_cert_info"
+    
+    print_warning "You are about to remove the following certificate:"
+    echo "  Name: $selected_cert_name"
+    echo "  Domain: $selected_domain"
+    echo "  Certificate: $selected_cert_path"
+    echo "  Key: $selected_key_path"
+    echo "  Created: $selected_created_date"
+    echo
+    
+    read -p "Are you sure you want to remove this certificate? (y/N): " -n 1 -r
+    echo
+    
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Certificate removal cancelled"
+        return 0
+    fi
+    
+    # Remove certificate files
+    if [[ -f "$selected_cert_path" ]]; then
+        rm -f "$selected_cert_path"
+        print_info "Certificate file removed: $selected_cert_path"
+    fi
+    
+    if [[ -f "$selected_key_path" ]]; then
+        rm -f "$selected_key_path"
+        print_info "Key file removed: $selected_key_path"
+    fi
+    
+    # Remove from registry
+    if [[ -f "$SSL_CERT_REGISTRY" ]]; then
+        grep -v "^$selected_cert_name|" "$SSL_CERT_REGISTRY" > "${SSL_CERT_REGISTRY}.tmp" && mv "${SSL_CERT_REGISTRY}.tmp" "$SSL_CERT_REGISTRY"
+        print_info "Certificate removed from registry"
+    fi
+    
+    print_success "SSL certificate '$selected_cert_name' removed successfully"
     
     return 0
 }
@@ -188,70 +357,152 @@ configure_https() {
     local ssl_dir="/etc/ssl/dotnet-apps"
     mkdir -p "$ssl_dir"
     
-    SSL_CERT_PATH="$ssl_dir/${app_name}.crt"
-    SSL_KEY_PATH="$ssl_dir/${app_name}.key"
+    # Remove expired certificates first
+    remove_expired_certificates
     
-    # Check if certificates already exist
-    if [[ -f "$SSL_CERT_PATH" && -f "$SSL_KEY_PATH" ]]; then
-        print_info "SSL certificates already exist for $app_name"
-        
-        # Show certificate information
-        print_info "Current certificate details:"
-        echo "  Certificate: $SSL_CERT_PATH"
-        echo "  Private Key: $SSL_KEY_PATH"
-        echo "  Issued for: $(openssl x509 -in "$SSL_CERT_PATH" -noout -subject 2>/dev/null | sed 's/subject=//' | sed 's/.*CN=//')"
-        echo "  Expires: $(openssl x509 -in "$SSL_CERT_PATH" -noout -dates 2>/dev/null | grep notAfter | sed 's/notAfter=//')"
-        
-        echo
-        echo "Certificate options:"
-        echo "1) Use existing certificate"
-        echo "2) Generate new certificate (overwrite existing)"
-        echo "3) Cancel HTTPS configuration"
-        echo
-        
-        read -p "Select option (1-3) [1]: " -r
-        local choice=${REPLY:-1}
-        
-        case "$choice" in
-            1)
-                print_info "Using existing SSL certificate"
-                # Ensure proper permissions
-                chown www-data:www-data "$SSL_CERT_PATH" "$SSL_KEY_PATH"
-                chmod 644 "$SSL_CERT_PATH"
-                chmod 600 "$SSL_KEY_PATH"
-                return 0
-                ;;
-            2)
-                print_info "Generating new SSL certificate..."
-                ;;
-            3)
-                print_info "HTTPS configuration cancelled"
+    # Get available certificates
+    local cert_registry_data=$(get_available_certificates)
+    
+    echo
+    echo "SSL Certificate options:"
+    echo "1) Use existing certificate"
+    echo "2) Create new certificate"
+    echo "3) Cancel HTTPS configuration"
+    echo
+    
+    read -p "Select option (1-3) [1]: " -r
+    local choice=${REPLY:-1}
+    
+    case "$choice" in
+        1)
+            if [[ -z "$cert_registry_data" ]]; then
+                print_error "No existing certificates found"
                 return 1
-                ;;
-            *)
-                print_error "Invalid choice"
+            fi
+            
+            print_info "Available certificates:"
+            echo
+            
+            # Display available certificates with numbers
+            local cert_count=0
+            local cert_names=()
+            local cert_paths=()
+            local key_paths=()
+            
+            echo "$cert_registry_data" | while IFS='|' read -r cert_name cert_path key_path cert_domain created_date; do
+                cert_count=$((cert_count + 1))
+                cert_names+=("$cert_name")
+                cert_paths+=("$cert_path")
+                key_paths+=("$key_path")
+                
+                echo "$cert_count) $cert_name (domain: $cert_domain)"
+                echo "   Created: $created_date"
+                echo "   Expires: $(openssl x509 -in "$cert_path" -noout -dates 2>/dev/null | grep notAfter | sed 's/notAfter=//')"
+                echo
+            done
+            
+            if [[ $cert_count -eq 0 ]]; then
+                print_error "No valid certificates found"
                 return 1
-                ;;
-        esac
-    fi
-    
-    # Generate self-signed certificate
-    print_info "Generating self-signed SSL certificate for domain: ${domain:-localhost}"
-    if ! openssl req -x509 -newkey rsa:4096 -keyout "$SSL_KEY_PATH" -out "$SSL_CERT_PATH" -days 365 -nodes -subj "/CN=${domain:-localhost}"; then
-        print_error "Failed to generate SSL certificate"
-        return 1
-    fi
-    
-    # Set proper permissions
-    chown www-data:www-data "$SSL_CERT_PATH" "$SSL_KEY_PATH"
-    chmod 644 "$SSL_CERT_PATH"
-    chmod 600 "$SSL_KEY_PATH"
-    
-    print_success "SSL certificate generated successfully"
-    print_info "Certificate: $SSL_CERT_PATH"
-    print_info "Private Key: $SSL_KEY_PATH"
-    
-    return 0
+            fi
+            
+            read -p "Select certificate number (1-$cert_count): " -r
+            local cert_choice=${REPLY:-1}
+            
+            if [[ ! "$cert_choice" =~ ^[0-9]+$ ]] || [[ "$cert_choice" -lt 1 ]] || [[ "$cert_choice" -gt "$cert_count" ]]; then
+                print_error "Invalid certificate selection"
+                return 1
+            fi
+            
+            # Get selected certificate info
+            local selected_cert_info=$(echo "$cert_registry_data" | sed -n "${cert_choice}p")
+            IFS='|' read -r selected_cert_name selected_cert_path selected_key_path selected_domain selected_created_date <<< "$selected_cert_info"
+            
+            SSL_CERT_PATH="$selected_cert_path"
+            SSL_KEY_PATH="$selected_key_path"
+            
+            print_success "Selected certificate: $selected_cert_name"
+            print_info "Certificate: $SSL_CERT_PATH"
+            print_info "Private Key: $SSL_KEY_PATH"
+            
+            # Ensure proper permissions
+            chown www-data:www-data "$SSL_CERT_PATH" "$SSL_KEY_PATH"
+            chmod 644 "$SSL_CERT_PATH"
+            chmod 600 "$SSL_KEY_PATH"
+            
+            return 0
+            ;;
+        2)
+            # Get certificate name
+            read -p "Enter certificate name for $app_name [${app_name}-cert]: " cert_name
+            cert_name=${cert_name:-"${app_name}-cert"}
+            
+            # Validate certificate name
+            if [[ ! "$cert_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+                print_error "Invalid certificate name. Use only letters, numbers, hyphens, and underscores."
+                return 1
+            fi
+            
+            # Check if certificate already exists in registry
+            if [[ -f "$SSL_CERT_REGISTRY" ]]; then
+                if grep -q "^$cert_name|" "$SSL_CERT_REGISTRY"; then
+                    print_warning "Certificate '$cert_name' already exists in registry"
+                    read -p "Overwrite existing certificate? (y/N): " -n 1 -r
+                    echo
+                    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                        print_info "Certificate creation cancelled"
+                        return 1
+                    fi
+                    
+                    # Remove existing certificate from registry
+                    grep -v "^$cert_name|" "$SSL_CERT_REGISTRY" > "${SSL_CERT_REGISTRY}.tmp" && mv "${SSL_CERT_REGISTRY}.tmp" "$SSL_CERT_REGISTRY"
+                fi
+            fi
+            
+            # Set certificate paths
+            SSL_CERT_PATH="$ssl_dir/${cert_name}.crt"
+            SSL_KEY_PATH="$ssl_dir/${cert_name}.key"
+            
+            # Get certificate validity period
+            read -p "Enter certificate validity in days [365]: " validity_days
+            validity_days=${validity_days:-365}
+            
+            # Validate validity days
+            if [[ ! "$validity_days" =~ ^[0-9]+$ ]]; then
+                print_error "Invalid validity period. Must be a number."
+                return 1
+            fi
+            
+            # Generate self-signed certificate
+            print_info "Generating self-signed SSL certificate for domain: ${domain:-localhost}"
+            if ! openssl req -x509 -newkey rsa:4096 -keyout "$SSL_KEY_PATH" -out "$SSL_CERT_PATH" -days "$validity_days" -nodes -subj "/CN=${domain:-localhost}"; then
+                print_error "Failed to generate SSL certificate"
+                return 1
+            fi
+            
+            # Set proper permissions
+            chown www-data:www-data "$SSL_CERT_PATH" "$SSL_KEY_PATH"
+            chmod 644 "$SSL_CERT_PATH"
+            chmod 600 "$SSL_KEY_PATH"
+            
+            # Register certificate
+            register_ssl_certificate "$cert_name" "$SSL_CERT_PATH" "$SSL_KEY_PATH" "${domain:-localhost}"
+            
+            print_success "SSL certificate created and registered successfully"
+            print_info "Certificate: $SSL_CERT_PATH"
+            print_info "Private Key: $SSL_KEY_PATH"
+            
+            return 0
+            ;;
+        3)
+            print_info "HTTPS configuration cancelled"
+            return 1
+            ;;
+        *)
+            print_error "Invalid choice"
+            return 1
+            ;;
+    esac
 }
 
 ask_https_configuration() {
@@ -1034,9 +1285,10 @@ remove_deployment() {
     
     # Ask if backup is needed before removing application files
     if [[ -d "$APP_DESTINATION_PATH" ]]; then
-        read -p "Do you want to create a backup before removing the application files? (y/n): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
+        read -p "Do you want to create a backup before removing the application files? (Y/n): " -r
+        local backup_choice=${REPLY:-Y}
+        
+        if [[ $backup_choice =~ ^[Yy]$ ]]; then
             local backup_path="${BACKUP_DIR}/${APP_NAME}_removal_backup_$(date +%Y%m%d_%H%M%S)"
             mkdir -p "$BACKUP_DIR"
             
@@ -1081,11 +1333,12 @@ show_main_menu() {
     echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
     echo -e "${CYAN}║${NC} ${YELLOW}7)${NC} List SSL certificates                                                               ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC} ${YELLOW}8)${NC} Create SSL certificate                                                              ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}9)${NC} Remove SSL certificate                                                              ${CYAN}║${NC}"
     echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
     echo -e "${CYAN}║${NC} ${RED}0)${NC} Exit                                                                                   ${CYAN}║${NC}"
     echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo
-    echo -e "${WHITE}Enter your choice (0-8): ${NC}\c"
+    echo -e "${WHITE}Enter your choice (0-9): ${NC}\c"
     read choice
 
     case "$choice" in
@@ -1126,6 +1379,9 @@ show_main_menu() {
             ;;
         8)
             create_ssl_certificate
+            ;;
+        9)
+            remove_ssl_certificate
             ;;
         0)
             print_info "Goodbye!"
