@@ -41,6 +41,8 @@ NGINX_SITE_NAME=""
 SERVICE_NAME=""
 DOTNET_VERSION=""
 USE_HTTPS=""
+BIND_ADDRESS=""
+USE_NGINX=""
 SSL_CERT_PATH=""
 SSL_KEY_PATH=""
 SSL_CERT_REGISTRY="/etc/ssl/dotnet-apps/.cert_registry"
@@ -834,11 +836,38 @@ get_app_configuration() {
         fi
     done
     
+    # Get access configuration
+    echo
+    echo "Choose access configuration:"
+    echo "1) Local only (localhost) - requires nginx reverse proxy for external access"
+    echo "2) Global access (0.0.0.0) - directly accessible from external networks (including SSH)"
+    echo "3) Loopback only (127.0.0.1) - only accessible from this server"
+    read -p "Enter choice (1-3): " access_choice
+    
+    case "$access_choice" in
+        1)
+            BIND_ADDRESS="localhost"
+            USE_NGINX="true"
+            ;;
+        2)
+            BIND_ADDRESS="0.0.0.0"
+            USE_NGINX="false"
+            ;;
+        3)
+            BIND_ADDRESS="127.0.0.1"
+            USE_NGINX="false"
+            ;;
+        *)
+            print_error "Invalid choice"
+            return 1
+            ;;
+    esac
+    
     # Get HTTPS configuration
     echo
     echo "Choose protocol:"
-    echo "1) HTTP (with nginx reverse proxy)"
-    echo "2) HTTPS (direct SSL/TLS on the application)"
+    echo "1) HTTP"
+    echo "2) HTTPS (SSL/TLS)"
     read -p "Enter choice (1-2): " protocol_choice
     
     case "$protocol_choice" in
@@ -899,14 +928,18 @@ get_app_configuration() {
     echo "  Source Path: $APP_SOURCE_PATH"
     echo "  Destination Path: $APP_DESTINATION_PATH"
     echo "  Port: $APP_PORT"
+    echo "  Bind Address: $BIND_ADDRESS"
     echo "  Protocol: $([ "$USE_HTTPS" == "true" ] && echo "HTTPS" || echo "HTTP")"
     echo "  Hosting Mode: $HOSTING_MODE"
     if [[ -n "$APP_SUBDIRECTORY" ]]; then
         echo "  Subdirectory: /$APP_SUBDIRECTORY"
     fi
     echo "  Service Name: $SERVICE_NAME"
-    if [[ "$USE_HTTPS" == "false" ]]; then
+    if [[ "$USE_NGINX" == "true" ]]; then
         echo "  Nginx Site: $NGINX_SITE_NAME"
+        echo "  External Access: Requires nginx reverse proxy"
+    else
+        echo "  External Access: Direct access on port $APP_PORT"
     fi
     
     echo
@@ -1015,7 +1048,7 @@ After=network.target
 [Service]
 Type=notify
 WorkingDirectory=${APP_DESTINATION_PATH}
-ExecStart=/usr/bin/dotnet ${APP_DESTINATION_PATH}/${main_dll_name} --urls=https://0.0.0.0:${APP_PORT}
+ExecStart=/usr/bin/dotnet ${APP_DESTINATION_PATH}/${main_dll_name} --urls=https://${BIND_ADDRESS}:${APP_PORT}
 Restart=always
 RestartSec=10
 KillSignal=SIGINT
@@ -1025,7 +1058,7 @@ Group=www-data
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
 Environment=DOTNET_CLI_HOME=/var/www/.dotnet
-Environment=ASPNETCORE_URLS=https://0.0.0.0:${APP_PORT}
+Environment=ASPNETCORE_URLS=https://${BIND_ADDRESS}:${APP_PORT}
 Environment=ASPNETCORE_HTTPS_PORT=${APP_PORT}
 Environment=ASPNETCORE_Kestrel__Certificates__Default__Path=${SSL_CERT_PATH}
 Environment=ASPNETCORE_Kestrel__Certificates__Default__KeyPath=${SSL_KEY_PATH}
@@ -1043,7 +1076,7 @@ After=network.target
 [Service]
 Type=notify
 WorkingDirectory=${APP_DESTINATION_PATH}
-ExecStart=/usr/bin/dotnet ${APP_DESTINATION_PATH}/${main_dll_name} --urls=http://localhost:${APP_PORT}
+ExecStart=/usr/bin/dotnet ${APP_DESTINATION_PATH}/${main_dll_name} --urls=http://${BIND_ADDRESS}:${APP_PORT}
 Restart=always
 RestartSec=10
 KillSignal=SIGINT
@@ -1440,10 +1473,14 @@ deploy_application() {
         return 1
     fi
     
-    # Create nginx configuration
-    if ! create_nginx_config; then
-        print_error "Failed to create nginx configuration"
-        return 1
+    # Create nginx configuration (only if needed)
+    if [[ "$USE_NGINX" == "true" ]]; then
+        if ! create_nginx_config; then
+            print_error "Failed to create nginx configuration"
+            return 1
+        fi
+    else
+        print_info "Skipping nginx configuration (direct access mode)"
     fi
     
     # Verify deployment
@@ -1459,13 +1496,33 @@ deploy_application() {
     echo "  Application: $APP_NAME"
     echo "  Service: $SERVICE_NAME"
     echo "  Port: $APP_PORT"
+    echo "  Bind Address: $BIND_ADDRESS"
     echo "  Path: $APP_DESTINATION_PATH"
+    
+    # Show access URLs based on configuration
     if [[ "$USE_HTTPS" == "true" ]]; then
-        echo "  Access URL: https://$(hostname -I | awk '{print $1}'):$APP_PORT"
-    elif [[ "$HOSTING_MODE" == "direct" ]]; then
-        echo "  Access URL: http://$(hostname -I | awk '{print $1}')"
+        if [[ "$BIND_ADDRESS" == "0.0.0.0" ]]; then
+            echo "  Access URL: https://$(hostname -I | awk '{print $1}'):$APP_PORT"
+            echo "  SSH Access: https://YOUR_SERVER_IP:$APP_PORT"
+        else
+            echo "  Access URL: https://localhost:$APP_PORT (local only)"
+            echo "  SSH Access: Not available (local binding only)"
+        fi
+    elif [[ "$USE_NGINX" == "true" ]]; then
+        if [[ "$HOSTING_MODE" == "direct" ]]; then
+            echo "  Access URL: http://$(hostname -I | awk '{print $1}') (via nginx)"
+        else
+            echo "  Access URL: http://$(hostname -I | awk '{print $1}')/${APP_SUBDIRECTORY} (via nginx)"
+        fi
+        echo "  SSH Access: Use nginx URL above"
     else
-        echo "  Access URL: http://$(hostname -I | awk '{print $1}')/${APP_SUBDIRECTORY}"
+        if [[ "$BIND_ADDRESS" == "0.0.0.0" ]]; then
+            echo "  Access URL: http://$(hostname -I | awk '{print $1}'):$APP_PORT"
+            echo "  SSH Access: http://YOUR_SERVER_IP:$APP_PORT"
+        else
+            echo "  Access URL: http://localhost:$APP_PORT (local only)"
+            echo "  SSH Access: Not available (local binding only)"
+        fi
     fi
     
     log_message "Deployment completed successfully for $APP_NAME"
