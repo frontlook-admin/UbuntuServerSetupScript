@@ -77,6 +77,33 @@ The Ubuntu User Management Script is a comprehensive bash utility designed to si
 
 ## Installation
 
+### 0. Fast Load Script
+```bash
+#if inside the script folder, go to the parent folder
+cd ..
+#remove the script folder
+sudo rm -rf UbuntuServerSetupScript
+#clone the script folder
+git clone https://github.com/frontlook-admin/UbuntuServerSetupScript.git
+#go to the script folder
+cd UbuntuServerSetupScript
+#make the script executable
+sudo chmod +x ubuntu-server-complete-setup.sh
+#run the script
+./ubuntu-server-complete-setup.sh
+```
+
+```bash
+#if inside the script folder, go to the parent folder
+cd ..
+
+sudo rm -rf UbuntuServerSetupScript
+git clone https://github.com/frontlook-admin/UbuntuServerSetupScript.git
+cd UbuntuServerSetupScript
+sudo chmod +x ubuntu-server-complete-setup.sh
+./ubuntu-server-complete-setup.sh
+```
+
 ### 1. Download the Script
 ```bash
 # Download directly (replace with actual URL)
