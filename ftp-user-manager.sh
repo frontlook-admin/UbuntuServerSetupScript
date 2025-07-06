@@ -607,6 +607,165 @@ list_ftp_users() {
     systemctl status vsftpd --no-pager -l
 }
 
+show_ftp_user_details() {
+    print_header "FTP User Details"
+    
+    # List existing FTP users
+    print_info "Existing FTP users:"
+    if [[ -f "$FTP_USER_LIST" ]] && [[ -s "$FTP_USER_LIST" ]]; then
+        cat "$FTP_USER_LIST" | nl
+    else
+        print_warning "No FTP users found"
+        return 1
+    fi
+    
+    echo
+    read -p "Enter username to view details: " username
+    
+    # Verify user exists
+    if ! grep -q "^$username$" "$FTP_USER_LIST" 2>/dev/null; then
+        print_error "User $username not found in FTP user list"
+        return 1
+    fi
+    
+    if ! id "$username" &>/dev/null; then
+        print_error "System user $username not found"
+        return 1
+    fi
+    
+    # Display user details
+    print_header "User Details: $username"
+    
+    # Basic user information
+    print_info "Basic Information:"
+    echo "  Username: $username"
+    echo "  User ID: $(id -u $username)"
+    echo "  Group ID: $(id -g $username)"
+    echo "  Primary Group: $(id -gn $username)"
+    echo "  Additional Groups: $(groups $username | cut -d: -f2 | tr ' ' ',')"
+    echo "  Shell: $(getent passwd $username | cut -d: -f7)"
+    echo "  Full Name: $(getent passwd $username | cut -d: -f5)"
+    
+    # FTP specific information
+    echo
+    print_info "FTP Configuration:"
+    
+    # Home directory and FTP path
+    user_home=$(eval echo ~$username)
+    echo "  Home Directory: $user_home"
+    echo "  FTP Root Path: $user_home"
+    
+    # Check if uploads and downloads directories exist
+    if [[ -d "$user_home/uploads" ]]; then
+        echo "  Uploads Directory: $user_home/uploads"
+        echo "  Uploads Permissions: $(ls -ld $user_home/uploads | cut -d' ' -f1)"
+    else
+        echo "  Uploads Directory: Not created"
+    fi
+    
+    if [[ -d "$user_home/downloads" ]]; then
+        echo "  Downloads Directory: $user_home/downloads"
+        echo "  Downloads Permissions: $(ls -ld $user_home/downloads | cut -d' ' -f1)"
+    else
+        echo "  Downloads Directory: Not created"
+    fi
+    
+    # Chroot status
+    if grep -q "^$username$" "$FTP_CHROOT_LIST" 2>/dev/null; then
+        echo "  Chroot Status: Enabled (restricted to home directory)"
+    else
+        echo "  Chroot Status: Disabled (can access entire system)"
+    fi
+    
+    # Account status
+    echo "  Account Status: $(passwd -S $username 2>/dev/null | cut -d' ' -f2)"
+    
+    # File permissions
+    echo
+    print_info "Directory Permissions:"
+    echo "  Home Directory: $(ls -ld $user_home | cut -d' ' -f1) (Owner: $(ls -ld $user_home | cut -d' ' -f3-4))"
+    
+    # Connection information
+    echo
+    print_info "Connection Information:"
+    server_ip=$(hostname -I | awk '{print $1}')
+    echo "  FTP Server: $server_ip"
+    echo "  FTP Port: 21"
+    echo "  Passive Ports: 40000-50000"
+    
+    # SSL/TLS status
+    if grep -q "^ssl_enable=YES" "$FTP_CONFIG_FILE" 2>/dev/null; then
+        echo "  SSL/TLS: Enabled (use FTPS)"
+        echo "  Connection URL: ftps://$username@$server_ip"
+    else
+        echo "  SSL/TLS: Disabled"
+        echo "  Connection URL: ftp://$username@$server_ip"
+    fi
+    
+    # Show directory contents
+    echo
+    print_info "Directory Contents:"
+    if [[ -d "$user_home" ]]; then
+        ls -la "$user_home" 2>/dev/null || echo "  Unable to list directory contents"
+    else
+        echo "  Home directory not found"
+    fi
+    
+    # Recent login information
+    echo
+    print_info "Login Information:"
+    last_login=$(lastlog -u "$username" 2>/dev/null | tail -1)
+    if [[ -n "$last_login" ]]; then
+        echo "  Last Login: $last_login"
+    else
+        echo "  Last Login: Never"
+    fi
+    
+    # Show processes
+    echo
+    print_info "Active Processes:"
+    if ps -u "$username" -o pid,ppid,cmd 2>/dev/null | grep -v "^[[:space:]]*PID"; then
+        echo "  User has active processes"
+    else
+        echo "  No active processes"
+    fi
+    
+    # Password information (with security warning)
+    echo
+    print_warning "Password Information:"
+    print_warning "For security reasons, passwords are not displayed by default."
+    echo
+    read -p "Do you want to reset the password for this user? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Resetting password for $username..."
+        read -s -p "Enter new password: " new_password
+        echo
+        read -s -p "Confirm new password: " password_confirm
+        echo
+        
+        if [[ "$new_password" == "$password_confirm" ]]; then
+            echo "$username:$new_password" | chpasswd >> "$LOG_FILE" 2>&1
+            print_success "Password reset successfully"
+            echo "  New password set for user: $username"
+        else
+            print_error "Passwords do not match"
+        fi
+    fi
+    
+    # Show connection examples
+    echo
+    print_info "Connection Examples:"
+    echo "  Command Line: ftp $server_ip"
+    echo "  FileZilla: Host: $server_ip, Username: $username, Port: 21"
+    echo "  WinSCP: Protocol: FTP, Host: $server_ip, Username: $username"
+    if grep -q "^ssl_enable=YES" "$FTP_CONFIG_FILE" 2>/dev/null; then
+        echo "  Secure: Use FTPS (FTP over SSL/TLS) - Port 21 with encryption"
+    fi
+    
+    log_message "Displayed details for FTP user $username"
+}
+
 # =============================================================================
 # FTP SERVER MANAGEMENT
 # =============================================================================
@@ -735,21 +894,22 @@ show_ftp_menu() {
         echo -e "${CYAN}║${NC} ${YELLOW}4)${NC} Modify FTP User                                                                     ${CYAN}║${NC}"
         echo -e "${CYAN}║${NC} ${YELLOW}5)${NC} Delete FTP User                                                                     ${CYAN}║${NC}"
         echo -e "${CYAN}║${NC} ${YELLOW}6)${NC} List FTP Users                                                                      ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}7)${NC} Show FTP User Details                                                               ${CYAN}║${NC}"
         echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${BLUE}BACKUP & RESTORE${NC}                                                                       ${CYAN}║${NC}"
         echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}7)${NC} Backup FTP Configuration                                                            ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}8)${NC} Restore FTP Configuration                                                           ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}8)${NC} Backup FTP Configuration                                                            ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}9)${NC} Restore FTP Configuration                                                           ${CYAN}║${NC}"
         echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${WHITE}INFORMATION${NC}                                                                            ${CYAN}║${NC}"
         echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}9)${NC} Show FTP Service Status                                                             ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}10)${NC} Show FTP Help                                                                     ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}10)${NC} Show FTP Service Status                                                             ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}11)${NC} Show FTP Help                                                                     ${CYAN}║${NC}"
         echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${RED}0)${NC} Exit                                                                                  ${CYAN}║${NC}"
         echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════╝${NC}"
         echo
-        echo -e "${WHITE}Enter your choice (0-10): ${NC}\c"
+        echo -e "${WHITE}Enter your choice (0-11): ${NC}\c"
         read choice
         
         case $choice in
@@ -790,18 +950,24 @@ show_ftp_menu() {
                 read -p "Press Enter to continue..." && continue
                 ;;
             7)
+                print_info "Showing FTP User Details..."
+                show_ftp_user_details
+                echo
+                read -p "Press Enter to continue..." && continue
+                ;;
+            8)
                 print_info "Backing up FTP Configuration..."
                 backup_ftp_config
                 echo
                 read -p "Press Enter to continue..." && continue
                 ;;
-            8)
+            9)
                 print_info "Restoring FTP Configuration..."
                 restore_ftp_config
                 echo
                 read -p "Press Enter to continue..." && continue
                 ;;
-            9)
+            10)
                 print_info "Showing FTP Service Status..."
                 systemctl status vsftpd --no-pager -l
                 echo
@@ -814,7 +980,7 @@ show_ftp_menu() {
                 echo
                 read -p "Press Enter to continue..." && continue
                 ;;
-            10)
+            11)
                 print_info "FTP Help Information..."
                 echo
                 echo "FTP Server Help:"
@@ -849,7 +1015,7 @@ show_ftp_menu() {
                 exit 0
                 ;;
             *)
-                print_error "Invalid option. Please select 0-10."
+                print_error "Invalid option. Please select 0-11."
                 sleep 2
                 ;;
         esac
@@ -871,6 +1037,7 @@ case "${1:-}" in
         echo "  --modify-user       Modify FTP user"
         echo "  --delete-user       Delete FTP user"
         echo "  --list-users        List FTP users"
+        echo "  --user-details      Show detailed user information"
         echo "  --configure-ssl     Configure SSL/TLS"
         echo "  --backup            Backup FTP configuration"
         echo "  --restore           Restore FTP configuration"
@@ -882,6 +1049,7 @@ case "${1:-}" in
         echo "  $0 --install        # Install FTP server"
         echo "  $0 --add-user       # Add FTP user"
         echo "  $0 --list-users     # List FTP users"
+        echo "  $0 --user-details   # Show detailed user information"
         echo "  $0 --status         # Show service status"
         exit 0
         ;;
@@ -908,6 +1076,10 @@ case "${1:-}" in
         ;;
     --list-users)
         list_ftp_users
+        exit 0
+        ;;
+    --user-details)
+        show_ftp_user_details
         exit 0
         ;;
     --configure-ssl)
