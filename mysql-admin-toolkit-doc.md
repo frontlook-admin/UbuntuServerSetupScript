@@ -1,4 +1,4 @@
-# MySQL User Management Script Documentation
+# MySQL Administration Toolkit Documentation
 
 ## Table of Contents
 1. [Overview](#overview)
@@ -6,31 +6,34 @@
 3. [Installation](#installation)
 4. [Configuration](#configuration)
 5. [Usage](#usage)
-6. [Privilege Levels](#privilege-levels)
-7. [Commands Reference](#commands-reference)
-8. [Interactive Mode](#interactive-mode)
-9. [Security Considerations](#security-considerations)
-10. [Backup and Recovery](#backup-and-recovery)
-11. [Troubleshooting](#troubleshooting)
-12. [Best Practices](#best-practices)
-13. [FAQ](#faq)
-14. [Examples](#examples)
+6. [User Management](#user-management)
+7. [Database Cloning & Synchronization](#database-cloning--synchronization)
+8. [Privilege Levels](#privilege-levels)
+9. [Commands Reference](#commands-reference)
+10. [Interactive Mode](#interactive-mode)
+11. [Security Considerations](#security-considerations)
+12. [Backup and Recovery](#backup-and-recovery)
+13. [Troubleshooting](#troubleshooting)
+14. [Best Practices](#best-practices)
+15. [FAQ](#faq)
+16. [Examples](#examples)
 
 ---
 
 ## Overview
 
-The MySQL User Management Script is a comprehensive bash utility designed to simplify MySQL user administration. It provides both command-line and interactive interfaces for creating, modifying, and deleting MySQL users with various privilege levels.
+The MySQL Administration Toolkit is a comprehensive bash utility designed to simplify MySQL administration tasks. It provides both command-line and interactive interfaces for user management, database cloning, synchronization, and comprehensive MySQL administration.
 
 ### Key Capabilities
-- Create users with global or database-specific privileges
-- Modify user passwords and privileges
-- Delete users safely with confirmation
-- List all users and their privileges
-- Automatic backup of user grants before modifications
-- Strong password validation
-- Comprehensive logging and error handling
-- Interactive guided interface for ease of use
+- **User Management**: Create, modify, and delete MySQL users with various privilege levels
+- **Database Cloning**: Clone databases from remote servers to local servers
+- **Database Synchronization**: Push databases to remote servers and bidirectional sync
+- **Remote Server Management**: Connect to and manage multiple MySQL servers
+- **Privilege Management**: Comprehensive user privilege control
+- **Backup & Recovery**: Automatic backup of user grants and database exports
+- **Security**: Strong password validation and secure connections
+- **Logging**: Comprehensive logging and error handling
+- **Interactive Interface**: Guided user interface for ease of use
 
 ### Compatibility
 - **MySQL Versions**: 5.7+, 8.0+
@@ -48,6 +51,14 @@ The MySQL User Management Script is a comprehensive bash utility designed to sim
 - **Delete Users**: Safe deletion with confirmation
 - **List Users**: View all MySQL users and their status
 
+### ✅ Database Cloning & Synchronization
+- **Remote Connection**: Connect to multiple MySQL servers
+- **Database Cloning**: Clone databases from remote to local servers
+- **Database Push**: Push local databases to remote servers
+- **Bidirectional Sync**: Automatic synchronization based on timestamps
+- **Data Export/Import**: Comprehensive database export and import
+- **Cross-Server Management**: Manage multiple MySQL instances
+
 ### ✅ Privilege Management
 - **Global Privileges**: SUPERUSER, DEVELOPER, READONLY, BACKUP
 - **Database Privileges**: FULL, DEVELOPER, READONLY, READWRITE
@@ -57,15 +68,17 @@ The MySQL User Management Script is a comprehensive bash utility designed to sim
 ### ✅ Security Features
 - **Password Validation**: Strong password requirements
 - **User Validation**: Username and hostname validation
-- **Automatic Backups**: Backs up grants before modifications
+- **Automatic Backups**: Backs up grants and databases before modifications
 - **Secure Storage**: Encrypted configuration storage
 - **Audit Trail**: Comprehensive logging
+- **Remote Authentication**: Secure remote server connections
 
 ### ✅ User Experience
 - **Interactive Mode**: Guided user interface
 - **Command Line**: Scriptable automation
 - **Error Handling**: Robust validation and error messages
 - **Help System**: Built-in documentation and examples
+- **Multi-Server Support**: Manage multiple MySQL servers from one interface
 
 ---
 
@@ -74,26 +87,26 @@ The MySQL User Management Script is a comprehensive bash utility designed to sim
 ### 1. Download the Script
 ```bash
 # Download directly (replace with actual URL)
-wget https://raw.githubusercontent.com/your-repo/mysql-user-manager.sh
+wget https://raw.githubusercontent.com/your-repo/mysql-admin-toolkit.sh
 
 # Or create the file manually
-sudo nano mysql-user-manager.sh
+sudo nano mysql-admin-toolkit.sh
 # Copy and paste the script content
 ```
 
 ### 2. Make Executable
 ```bash
-chmod +x mysql-user-manager.sh
+chmod +x mysql-admin-toolkit.sh
 ```
 
 ### 3. Move to System Path (Optional)
 ```bash
-sudo mv mysql-user-manager.sh /usr/local/bin/mysql-user-manager
+sudo mv mysql-admin-toolkit.sh /usr/local/bin/mysql-admin-toolkit
 ```
 
 ### 4. Verify Installation
 ```bash
-./mysql-user-manager.sh --help
+./mysql-admin-toolkit.sh --help
 ```
 
 ---
@@ -104,7 +117,7 @@ sudo mv mysql-user-manager.sh /usr/local/bin/mysql-user-manager
 The script will prompt for MySQL connection details on first run:
 
 ```bash
-./mysql-user-manager.sh
+./mysql-admin-toolkit.sh
 ```
 
 **Required Information:**
@@ -114,7 +127,7 @@ The script will prompt for MySQL connection details on first run:
 - MySQL Root Password
 
 ### Configuration File
-The script automatically creates a configuration file at: /etc/mysql-user-manager.conf
+The script automatically creates a configuration file at: /etc/mysql-admin-toolkit.conf
 
 
 **Sample Configuration:**
@@ -136,7 +149,7 @@ The configuration file is automatically secured with `chmod 600` to protect sens
 
 #### Basic Syntax
 ```bash
-./mysql-user-manager.sh [OPTIONS] [COMMAND] [ARGUMENTS]
+./mysql-admin-toolkit.sh [OPTIONS] [COMMAND] [ARGUMENTS]
 ```
 
 #### Available Options
@@ -150,19 +163,22 @@ The configuration file is automatically secured with `chmod 600` to protect sens
 #### Quick Start Examples
 ```bash
 # Interactive mode (recommended for beginners)
-./mysql-user-manager.sh --interactive
+./mysql-admin-toolkit.sh --interactive
 
 # Create user with global developer rights
-./mysql-user-manager.sh create-global myuser mypass123 localhost DEVELOPER
+./mysql-admin-toolkit.sh create-global myuser mypass123 localhost DEVELOPER
 
 # Create user with database-specific rights
-./mysql-user-manager.sh create-database appuser apppass123 localhost myapp_db FULL
+./mysql-admin-toolkit.sh create-database appuser apppass123 localhost myapp_db FULL
 
 # List all users
-./mysql-user-manager.sh list-users
+./mysql-admin-toolkit.sh list-users
+
+# Clone database from remote server
+./mysql-admin-toolkit.sh clone-database remote_db_name
 
 # Show help
-./mysql-user-manager.sh --help
+./mysql-admin-toolkit.sh --help
 ```
 
 ---
@@ -270,6 +286,79 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON `database`.* TO 'user'@'host';
 - Application users
 - Data entry applications
 - Basic CRUD operations
+
+---
+
+## Database Cloning & Synchronization
+
+### Overview
+The MySQL Administration Toolkit provides comprehensive database cloning and synchronization capabilities, allowing you to:
+- Clone databases from remote servers to local servers
+- Push local databases to remote servers
+- Perform bidirectional synchronization
+- Manage multiple MySQL server connections
+
+### Remote Server Setup
+Before using cloning features, you need to configure remote server connections:
+
+```bash
+# Setup remote MySQL connection
+./mysql-admin-toolkit.sh setup-remote-connection
+
+# Or use interactive mode
+./mysql-admin-toolkit.sh --interactive
+# Select Option 11: Setup Remote MySQL Connection
+```
+
+### Database Cloning Features
+
+#### Clone Database from Remote Server
+Clone a database from a remote MySQL server to your local server:
+
+```bash
+# Clone specific database
+./mysql-admin-toolkit.sh clone-database remote_db_name
+
+# Interactive clone with options
+./mysql-admin-toolkit.sh --interactive
+# Select Option 12: Clone Database from Remote Server
+```
+
+#### Push Database to Remote Server
+Push a local database to a remote MySQL server:
+
+```bash
+# Push specific database
+./mysql-admin-toolkit.sh push-database local_db_name
+
+# Interactive push with options
+./mysql-admin-toolkit.sh --interactive
+# Select Option 13: Push Database to Remote Server
+```
+
+#### Bidirectional Synchronization
+Synchronize databases between local and remote servers based on timestamps:
+
+```bash
+# Synchronize databases
+./mysql-admin-toolkit.sh synchronize-databases
+
+# Interactive synchronization
+./mysql-admin-toolkit.sh --interactive
+# Select Option 14: Synchronize Databases (Bidirectional)
+```
+
+### Security Features
+- **Automatic Backups**: Creates backups before any operation
+- **Connection Validation**: Tests remote connections before operations
+- **Secure Storage**: Encrypted remote connection configuration
+- **Comprehensive Logging**: Detailed operation logs
+
+### Backup and Recovery
+- Automatic database exports before modifications
+- Timestamped backup files
+- Recovery assistance for failed operations
+- Backup verification and integrity checks
 
 ---
 

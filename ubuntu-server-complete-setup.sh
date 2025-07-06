@@ -1078,20 +1078,20 @@ run_ubuntu_user_manager() {
     fi
 }
 
-# Function to run MySQL user management
-run_mysql_user_manager() {
-    print_header "MySQL User Management"
+# Function to run MySQL administration toolkit
+run_mysql_admin_toolkit() {
+    print_header "MySQL Administration Toolkit"
     
-    if [[ -f "mysql-user-manager.sh" ]]; then
-        print_info "Running MySQL User Manager..."
-        if [[ -x "mysql-user-manager.sh" ]]; then
-            ./mysql-user-manager.sh "$@"
+    if [[ -f "mysql-admin-toolkit.sh" ]]; then
+        print_info "Running MySQL Administration Toolkit..."
+        if [[ -x "mysql-admin-toolkit.sh" ]]; then
+            ./mysql-admin-toolkit.sh "$@"
         else
-            chmod +x mysql-user-manager.sh
-            ./mysql-user-manager.sh "$@"
+            chmod +x mysql-admin-toolkit.sh
+            ./mysql-admin-toolkit.sh "$@"
         fi
     else
-        print_error "mysql-user-manager.sh not found in current directory"
+        print_error "mysql-admin-toolkit.sh not found in current directory"
         exit 1
     fi
 }
@@ -1150,8 +1150,8 @@ show_user_management_menu() {
                 read -p "Press Enter to continue..." && continue
                 ;;
             2)
-                print_info "Starting MySQL User Management..."
-                run_mysql_user_manager
+                print_info "Starting MySQL Administration Toolkit..."
+                run_mysql_admin_toolkit
                 echo
                 read -p "Press Enter to continue..." && continue
                 ;;
@@ -2379,9 +2379,9 @@ show_main_menu() {
                 read -p "Press Enter to continue..." && continue
                 ;;
             9)
-                print_info "Starting MySQL User Management..."
+                print_info "Starting MySQL Administration Toolkit..."
                 check_root
-                run_mysql_user_manager
+                run_mysql_admin_toolkit
                 read -p "Press Enter to continue..." && continue
                 ;;
             10)
@@ -2441,7 +2441,7 @@ show_main_menu() {
                 echo
                 echo "USER MANAGEMENT OPTIONS:"
                 echo "  --manage-users      Run Ubuntu user management"
-                echo "  --manage-mysql      Run MySQL user management"
+                echo "  --manage-mysql      Run MySQL administration toolkit"
                 echo "  --manage-ftp        Run FTP user management"
                 echo "  --user-menu         Show user management menu"
                 echo
@@ -2452,7 +2452,7 @@ show_main_menu() {
                 echo "AVAILABLE SCRIPTS:"
                 echo "  • ubuntu-server-complete-setup.sh - Complete server setup script"
                 echo "  • ubuntu-user-manager.sh     - Ubuntu system user management"
-                echo "  • mysql-user-manager.sh      - MySQL user management"
+                echo "  • mysql-admin-toolkit.sh     - MySQL administration toolkit"
                 echo "  • ftp-user-manager.sh        - FTP server and user management"
                 echo "  • make-executable.sh         - Script permission manager"
                 echo
@@ -2461,7 +2461,7 @@ show_main_menu() {
                 echo "  $0 --auto                    # Automatic installation"
                 echo "  $0 --make-executable         # Make all scripts executable"
                 echo "  $0 --manage-users            # Manage Ubuntu users"
-                echo "  $0 --manage-mysql            # Manage MySQL users"
+                echo "  $0 --manage-mysql            # Manage MySQL administration"
                 echo "  $0 --manage-ftp              # Manage FTP users"
                 echo "  $0 --user-menu               # Show user management menu"
                 echo "  $0 --run-all                 # Run everything"
@@ -3064,7 +3064,7 @@ case "${1:-}" in
         echo
         echo "USER MANAGEMENT OPTIONS:"
         echo "  --manage-users      Run Ubuntu user management"
-        echo "  --manage-mysql      Run MySQL user management"
+        echo "  --manage-mysql      Run MySQL administration toolkit"
         echo "  --manage-ftp        Run FTP user management"
         echo "  --user-menu         Show user management menu"
         echo
@@ -3075,7 +3075,7 @@ case "${1:-}" in
         echo "AVAILABLE SCRIPTS:"
         echo "  • ubuntu-server-complete-setup.sh - Complete server setup script"
         echo "  • ubuntu-user-manager.sh     - Ubuntu system user management"
-        echo "  • mysql-user-manager.sh      - MySQL user management"
+        echo "  • mysql-admin-toolkit.sh     - MySQL administration toolkit"
         echo "  • ftp-user-manager.sh        - FTP server and user management"
         echo "  • make-executable.sh         - Script permission manager"
         echo
@@ -3084,7 +3084,7 @@ case "${1:-}" in
         echo "  $0 --auto                    # Automatic installation"
         echo "  $0 --make-executable         # Make all scripts executable"
         echo "  $0 --manage-users            # Manage Ubuntu users"
-        echo "  $0 --manage-mysql            # Manage MySQL users"
+        echo "  $0 --manage-mysql            # Manage MySQL administration"
         echo "  $0 --manage-ftp              # Manage FTP users"
         echo "  $0 --user-menu               # Show user management menu"
         echo "  $0 --run-all                 # Run everything"
@@ -3159,10 +3159,10 @@ case "${1:-}" in
         exit 0
         ;;
     --manage-mysql)
-        print_info "Running MySQL User Management"
+        print_info "Running MySQL Administration Toolkit"
         check_root
         shift  # Remove the --manage-mysql argument
-        run_mysql_user_manager "$@"
+        run_mysql_admin_toolkit "$@"
         exit 0
         ;;
     --manage-ftp)

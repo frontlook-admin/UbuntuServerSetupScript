@@ -434,13 +434,20 @@ create_app_directory() {
     if [[ -d "$APP_DESTINATION_PATH" ]]; then
         print_warning "Application directory already exists: $APP_DESTINATION_PATH"
         
-        # Create backup
-        local backup_path="${BACKUP_DIR}/${APP_NAME}_backup_$(date +%Y%m%d_%H%M%S)"
-        mkdir -p "$BACKUP_DIR"
-        
-        print_info "Creating backup of existing application..."
-        cp -r "$APP_DESTINATION_PATH" "$backup_path"
-        print_success "Backup created at: $backup_path"
+        # Ask if backup is needed
+        read -p "Do you want to create a backup of the existing application? (y/n): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            # Create backup
+            local backup_path="${BACKUP_DIR}/${APP_NAME}_backup_$(date +%Y%m%d_%H%M%S)"
+            mkdir -p "$BACKUP_DIR"
+            
+            print_info "Creating backup of existing application..."
+            cp -r "$APP_DESTINATION_PATH" "$backup_path"
+            print_success "Backup created at: $backup_path"
+        else
+            print_info "Skipping backup creation"
+        fi
         
         # Remove existing directory
         rm -rf "$APP_DESTINATION_PATH"
@@ -727,14 +734,20 @@ remove_deployment() {
     rm -f "${NGINX_ENABLED_DIR}/${NGINX_SITE_NAME}"
     systemctl reload nginx
     
-    # Create backup before removing application files
-    local backup_path="${BACKUP_DIR}/${APP_NAME}_removal_backup_$(date +%Y%m%d_%H%M%S)"
-    mkdir -p "$BACKUP_DIR"
-    
+    # Ask if backup is needed before removing application files
     if [[ -d "$APP_DESTINATION_PATH" ]]; then
-        print_info "Creating backup before removal..."
-        cp -r "$APP_DESTINATION_PATH" "$backup_path"
-        print_success "Backup created at: $backup_path"
+        read -p "Do you want to create a backup before removing the application files? (y/n): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            local backup_path="${BACKUP_DIR}/${APP_NAME}_removal_backup_$(date +%Y%m%d_%H%M%S)"
+            mkdir -p "$BACKUP_DIR"
+            
+            print_info "Creating backup before removal..."
+            cp -r "$APP_DESTINATION_PATH" "$backup_path"
+            print_success "Backup created at: $backup_path"
+        else
+            print_info "Skipping backup creation"
+        fi
         
         # Remove application files
         rm -rf "$APP_DESTINATION_PATH"
