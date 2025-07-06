@@ -40,6 +40,9 @@ HOSTING_MODE=""
 NGINX_SITE_NAME=""
 SERVICE_NAME=""
 DOTNET_VERSION=""
+USE_HTTPS=""
+SSL_CERT_PATH=""
+SSL_KEY_PATH=""
 
 # =============================================================================
 # UTILITY FUNCTIONS
@@ -69,6 +72,224 @@ print_info() {
 
 log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+}
+
+# =============================================================================
+# HTTPS CONFIGURATION FUNCTIONS
+# =============================================================================
+
+list_ssl_certificates() {
+    local ssl_dir="/etc/ssl/dotnet-apps"
+    
+    print_header "Available SSL Certificates"
+    
+    if [[ ! -d "$ssl_dir" ]]; then
+        print_info "No SSL certificates directory found"
+        return 0
+    fi
+    
+    local certs_found=0
+    
+    # List all certificate files
+    if ls "$ssl_dir"/*.crt &>/dev/null; then
+        for cert_file in "$ssl_dir"/*.crt; do
+            local cert_name=$(basename "$cert_file" .crt)
+            local key_file="${ssl_dir}/${cert_name}.key"
+            
+            if [[ -f "$key_file" ]]; then
+                echo
+                print_info "Certificate: $cert_name"
+                echo "  Certificate file: $cert_file"
+                echo "  Key file: $key_file"
+                echo "  Issued for: $(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/subject=//' | sed 's/.*CN=//')"
+                echo "  Expires: $(openssl x509 -in "$cert_file" -noout -dates 2>/dev/null | grep notAfter | sed 's/notAfter=//')"
+                echo "  Valid: $(openssl x509 -in "$cert_file" -noout -checkend 0 &>/dev/null && echo "Yes" || echo "No (expired)")"
+                certs_found=$((certs_found + 1))
+            fi
+        done
+    fi
+    
+    if [[ $certs_found -eq 0 ]]; then
+        print_info "No SSL certificates found"
+    else
+        print_info "Found $certs_found SSL certificate(s)"
+    fi
+    
+    return 0
+}
+
+create_ssl_certificate() {
+    print_header "Create SSL Certificate"
+    
+    # Create SSL directory
+    local ssl_dir="/etc/ssl/dotnet-apps"
+    mkdir -p "$ssl_dir"
+    
+    # Get certificate name
+    read -p "Enter certificate name (alphanumeric, hyphens, underscores only): " cert_name
+    
+    # Validate certificate name
+    if [[ ! "$cert_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        print_error "Invalid certificate name. Use only letters, numbers, hyphens, and underscores."
+        return 1
+    fi
+    
+    if [[ -z "$cert_name" ]]; then
+        print_error "Certificate name cannot be empty"
+        return 1
+    fi
+    
+    # Check if certificate already exists
+    local cert_path="$ssl_dir/${cert_name}.crt"
+    local key_path="$ssl_dir/${cert_name}.key"
+    
+    if [[ -f "$cert_path" ]]; then
+        print_warning "Certificate '$cert_name' already exists"
+        read -p "Overwrite existing certificate? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_info "Certificate creation cancelled"
+            return 0
+        fi
+    fi
+    
+    # Get domain name
+    read -p "Enter domain name or IP address [localhost]: " domain
+    domain=${domain:-localhost}
+    
+    # Create certificate
+    print_info "Creating SSL certificate for domain: $domain"
+    
+    if ! openssl req -x509 -newkey rsa:4096 -keyout "$key_path" -out "$cert_path" -days 365 -nodes -subj "/CN=$domain"; then
+        print_error "Failed to create SSL certificate"
+        return 1
+    fi
+    
+    # Set proper permissions
+    chown www-data:www-data "$cert_path" "$key_path"
+    chmod 644 "$cert_path"
+    chmod 600 "$key_path"
+    
+    print_success "SSL certificate created successfully"
+    print_info "Certificate: $cert_path"
+    print_info "Private Key: $key_path"
+    print_info "Domain: $domain"
+    
+    return 0
+}
+
+configure_https() {
+    local app_name="$1"
+    local domain="$2"
+    
+    print_header "Configuring HTTPS for $app_name"
+    
+    # Create SSL directory
+    local ssl_dir="/etc/ssl/dotnet-apps"
+    mkdir -p "$ssl_dir"
+    
+    SSL_CERT_PATH="$ssl_dir/${app_name}.crt"
+    SSL_KEY_PATH="$ssl_dir/${app_name}.key"
+    
+    # Check if certificates already exist
+    if [[ -f "$SSL_CERT_PATH" && -f "$SSL_KEY_PATH" ]]; then
+        print_info "SSL certificates already exist for $app_name"
+        
+        # Show certificate information
+        print_info "Current certificate details:"
+        echo "  Certificate: $SSL_CERT_PATH"
+        echo "  Private Key: $SSL_KEY_PATH"
+        echo "  Issued for: $(openssl x509 -in "$SSL_CERT_PATH" -noout -subject 2>/dev/null | sed 's/subject=//' | sed 's/.*CN=//')"
+        echo "  Expires: $(openssl x509 -in "$SSL_CERT_PATH" -noout -dates 2>/dev/null | grep notAfter | sed 's/notAfter=//')"
+        
+        echo
+        echo "Certificate options:"
+        echo "1) Use existing certificate"
+        echo "2) Generate new certificate (overwrite existing)"
+        echo "3) Cancel HTTPS configuration"
+        echo
+        
+        read -p "Select option (1-3) [1]: " -r
+        local choice=${REPLY:-1}
+        
+        case "$choice" in
+            1)
+                print_info "Using existing SSL certificate"
+                # Ensure proper permissions
+                chown www-data:www-data "$SSL_CERT_PATH" "$SSL_KEY_PATH"
+                chmod 644 "$SSL_CERT_PATH"
+                chmod 600 "$SSL_KEY_PATH"
+                return 0
+                ;;
+            2)
+                print_info "Generating new SSL certificate..."
+                ;;
+            3)
+                print_info "HTTPS configuration cancelled"
+                return 1
+                ;;
+            *)
+                print_error "Invalid choice"
+                return 1
+                ;;
+        esac
+    fi
+    
+    # Generate self-signed certificate
+    print_info "Generating self-signed SSL certificate for domain: ${domain:-localhost}"
+    if ! openssl req -x509 -newkey rsa:4096 -keyout "$SSL_KEY_PATH" -out "$SSL_CERT_PATH" -days 365 -nodes -subj "/CN=${domain:-localhost}"; then
+        print_error "Failed to generate SSL certificate"
+        return 1
+    fi
+    
+    # Set proper permissions
+    chown www-data:www-data "$SSL_CERT_PATH" "$SSL_KEY_PATH"
+    chmod 644 "$SSL_CERT_PATH"
+    chmod 600 "$SSL_KEY_PATH"
+    
+    print_success "SSL certificate generated successfully"
+    print_info "Certificate: $SSL_CERT_PATH"
+    print_info "Private Key: $SSL_KEY_PATH"
+    
+    return 0
+}
+
+ask_https_configuration() {
+    echo
+    print_info "HTTPS Configuration"
+    echo "1) HTTP only (default, uses nginx reverse proxy)"
+    echo "2) HTTPS direct (application serves HTTPS directly)"
+    echo
+    
+    read -p "Select configuration (1-2) [1]: " -r
+    local choice=${REPLY:-1}
+    
+    case "$choice" in
+        1)
+            USE_HTTPS="false"
+            print_info "Selected: HTTP only (nginx reverse proxy)"
+            ;;
+        2)
+            USE_HTTPS="true"
+            print_info "Selected: HTTPS direct"
+            
+            # Ask for domain name
+            read -p "Enter domain name or IP address for SSL certificate [$(hostname -I | awk '{print $1}')]: " -r
+            local domain=${REPLY:-$(hostname -I | awk '{print $1}')}
+            
+            # Configure SSL
+            if ! configure_https "$APP_NAME" "$domain"; then
+                print_error "Failed to configure HTTPS"
+                return 1
+            fi
+            ;;
+        *)
+            print_error "Invalid choice"
+            return 1
+            ;;
+    esac
+    
+    return 0
 }
 
 # =============================================================================
@@ -362,6 +583,26 @@ get_app_configuration() {
         fi
     done
     
+    # Get HTTPS configuration
+    echo
+    echo "Choose protocol:"
+    echo "1) HTTP (with nginx reverse proxy)"
+    echo "2) HTTPS (direct SSL/TLS on the application)"
+    read -p "Enter choice (1-2): " protocol_choice
+    
+    case "$protocol_choice" in
+        1)
+            USE_HTTPS="false"
+            ;;
+        2)
+            USE_HTTPS="true"
+            ;;
+        *)
+            print_error "Invalid choice"
+            return 1
+            ;;
+    esac
+    
     # Get hosting mode
     echo
     echo "Choose hosting mode:"
@@ -396,18 +637,26 @@ get_app_configuration() {
     NGINX_SITE_NAME="${APP_NAME}"
     APP_DESTINATION_PATH="${APPS_ROOT_DIR}/${APP_NAME}"
     
+    # Configure HTTPS if needed
+    if [[ "$USE_HTTPS" == "true" ]]; then
+        configure_https "$APP_NAME" "$(hostname -I | awk '{print $1}')"
+    fi
+    
     # Show configuration summary
     print_info "Configuration Summary:"
     echo "  App Name: $APP_NAME"
     echo "  Source Path: $APP_SOURCE_PATH"
     echo "  Destination Path: $APP_DESTINATION_PATH"
     echo "  Port: $APP_PORT"
+    echo "  Protocol: $([ "$USE_HTTPS" == "true" ] && echo "HTTPS" || echo "HTTP")"
     echo "  Hosting Mode: $HOSTING_MODE"
     if [[ -n "$APP_SUBDIRECTORY" ]]; then
         echo "  Subdirectory: /$APP_SUBDIRECTORY"
     fi
     echo "  Service Name: $SERVICE_NAME"
-    echo "  Nginx Site: $NGINX_SITE_NAME"
+    if [[ "$USE_HTTPS" == "false" ]]; then
+        echo "  Nginx Site: $NGINX_SITE_NAME"
+    fi
     
     echo
     read -p "Continue with this configuration? (y/n): " -n 1 -r
@@ -489,12 +738,53 @@ copy_application_files() {
 create_systemd_service() {
     print_header "Creating Systemd Service"
     
+    # Create .dotnet directory for www-data user to prevent permission issues
+    print_info "Setting up .NET CLI directories..."
+    if [[ ! -d "/var/www/.dotnet" ]]; then
+        mkdir -p "/var/www/.dotnet"
+        chown www-data:www-data "/var/www/.dotnet"
+        chmod 755 "/var/www/.dotnet"
+        print_success "Created .NET CLI directory: /var/www/.dotnet"
+    else
+        print_info ".NET CLI directory already exists: /var/www/.dotnet"
+    fi
+    
     # Find the main DLL
     local main_dll=$(find "$APP_DESTINATION_PATH" -name "*.dll" | head -n 1)
     local main_dll_name=$(basename "$main_dll")
     
     # Create service file
-    cat > "${SYSTEMD_SERVICE_DIR}/${SERVICE_NAME}.service" <<EOF
+    if [[ "$USE_HTTPS" == "true" ]]; then
+        # HTTPS configuration
+        cat > "${SYSTEMD_SERVICE_DIR}/${SERVICE_NAME}.service" <<EOF
+[Unit]
+Description=${APP_NAME} .NET Web Application (HTTPS)
+After=network.target
+
+[Service]
+Type=notify
+WorkingDirectory=${APP_DESTINATION_PATH}
+ExecStart=/usr/bin/dotnet ${APP_DESTINATION_PATH}/${main_dll_name} --urls=https://0.0.0.0:${APP_PORT}
+Restart=always
+RestartSec=10
+KillSignal=SIGINT
+SyslogIdentifier=${SERVICE_NAME}
+User=www-data
+Group=www-data
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+Environment=DOTNET_CLI_HOME=/var/www/.dotnet
+Environment=ASPNETCORE_URLS=https://0.0.0.0:${APP_PORT}
+Environment=ASPNETCORE_HTTPS_PORT=${APP_PORT}
+Environment=ASPNETCORE_Kestrel__Certificates__Default__Path=${SSL_CERT_PATH}
+Environment=ASPNETCORE_Kestrel__Certificates__Default__KeyPath=${SSL_KEY_PATH}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    else
+        # HTTP configuration (default)
+        cat > "${SYSTEMD_SERVICE_DIR}/${SERVICE_NAME}.service" <<EOF
 [Unit]
 Description=${APP_NAME} .NET Web Application
 After=network.target
@@ -511,10 +801,12 @@ User=www-data
 Group=www-data
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+Environment=DOTNET_CLI_HOME=/var/www/.dotnet
 
 [Install]
 WantedBy=multi-user.target
 EOF
+    fi
     
     # Reload systemd
     systemctl daemon-reload
@@ -536,6 +828,12 @@ EOF
 
 create_nginx_config() {
     print_header "Creating Nginx Configuration"
+    
+    # Skip nginx configuration if using HTTPS directly
+    if [[ "$USE_HTTPS" == "true" ]]; then
+        print_info "Skipping nginx configuration - using direct HTTPS"
+        return 0
+    fi
     
     local nginx_config_file="${NGINX_CONFIG_DIR}/${NGINX_SITE_NAME}"
     
@@ -779,10 +1077,15 @@ show_main_menu() {
     echo -e "${CYAN}║${NC} ${YELLOW}5)${NC} Restart application                                                                 ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC} ${YELLOW}6)${NC} Remove deployment                                                                   ${CYAN}║${NC}"
     echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${BLUE}SSL CERTIFICATE MANAGEMENT${NC}                                                          ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}7)${NC} List SSL certificates                                                               ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}8)${NC} Create SSL certificate                                                              ${CYAN}║${NC}"
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
     echo -e "${CYAN}║${NC} ${RED}0)${NC} Exit                                                                                   ${CYAN}║${NC}"
     echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo
-    echo -e "${WHITE}Enter your choice (0-6): ${NC}\c"
+    echo -e "${WHITE}Enter your choice (0-8): ${NC}\c"
     read choice
 
     case "$choice" in
@@ -817,6 +1120,12 @@ show_main_menu() {
             else
                 print_error "No application configured"
             fi
+            ;;
+        7)
+            list_ssl_certificates
+            ;;
+        8)
+            create_ssl_certificate
             ;;
         0)
             print_info "Goodbye!"
@@ -895,7 +1204,9 @@ deploy_application() {
     echo "  Service: $SERVICE_NAME"
     echo "  Port: $APP_PORT"
     echo "  Path: $APP_DESTINATION_PATH"
-    if [[ "$HOSTING_MODE" == "direct" ]]; then
+    if [[ "$USE_HTTPS" == "true" ]]; then
+        echo "  Access URL: https://$(hostname -I | awk '{print $1}'):$APP_PORT"
+    elif [[ "$HOSTING_MODE" == "direct" ]]; then
         echo "  Access URL: http://$(hostname -I | awk '{print $1}')"
     else
         echo "  Access URL: http://$(hostname -I | awk '{print $1}')/${APP_SUBDIRECTORY}"

@@ -306,11 +306,60 @@ test_remote_mysql_connection() {
         return 1
     fi
     
-    if mysql -h"$REMOTE_MYSQL_HOST" -P"$REMOTE_MYSQL_PORT" -u"$REMOTE_MYSQL_USER" -p"$REMOTE_MYSQL_PASSWORD" -e "SELECT 1" &>/dev/null; then
+    # Show connection details for debugging
+    print_info "Connection details:"
+    print_info "  Host: $REMOTE_MYSQL_HOST"
+    print_info "  Port: $REMOTE_MYSQL_PORT"
+    print_info "  User: $REMOTE_MYSQL_USER"
+    
+    # Test basic connectivity first
+    if ! command -v nc &>/dev/null; then
+        print_warning "netcat (nc) not installed - skipping port connectivity test"
+    else
+        print_info "Testing port connectivity..."
+        if timeout 5 nc -z "$REMOTE_MYSQL_HOST" "$REMOTE_MYSQL_PORT" 2>/dev/null; then
+            print_success "Port $REMOTE_MYSQL_PORT is reachable on $REMOTE_MYSQL_HOST"
+        else
+            print_error "Cannot reach port $REMOTE_MYSQL_PORT on $REMOTE_MYSQL_HOST"
+            print_info "This could indicate:"
+            print_info "  • Firewall blocking the connection"
+            print_info "  • MySQL server not running"
+            print_info "  • Wrong port number"
+            print_info "  • Network connectivity issues"
+            return 1
+        fi
+    fi
+    
+    # Test MySQL connection with detailed error reporting
+    print_info "Testing MySQL authentication..."
+    local mysql_error=$(mysql -h"$REMOTE_MYSQL_HOST" -P"$REMOTE_MYSQL_PORT" -u"$REMOTE_MYSQL_USER" -p"$REMOTE_MYSQL_PASSWORD" -e "SELECT 1" 2>&1)
+    local mysql_exit_code=$?
+    
+    if [[ $mysql_exit_code -eq 0 ]]; then
         print_success "Remote MySQL connection successful"
         return 0
     else
         print_error "Remote MySQL connection failed"
+        print_info "Error details:"
+        echo "$mysql_error" | sed 's/^/    /'
+        
+        # Provide helpful troubleshooting tips
+        if echo "$mysql_error" | grep -q "Access denied"; then
+            print_info "Troubleshooting tips:"
+            print_info "  • Check username and password"
+            print_info "  • Verify user has permission to connect from this IP"
+            print_info "  • Check if user account is locked"
+        elif echo "$mysql_error" | grep -q "Can't connect"; then
+            print_info "Troubleshooting tips:"
+            print_info "  • Check if MySQL server is running"
+            print_info "  • Verify host and port are correct"
+            print_info "  • Check firewall settings"
+        elif echo "$mysql_error" | grep -q "SSL connection error"; then
+            print_info "Troubleshooting tips:"
+            print_info "  • Server may require SSL connection"
+            print_info "  • Try adding --ssl-mode=DISABLED to bypass SSL"
+        fi
+        
         return 1
     fi
 }
@@ -1298,11 +1347,11 @@ show_main_menu() {
                 if [[ $REPLY =~ ^[Yy]$ ]]; then
                     if ! setup_remote_mysql_connection; then
                         print_error "Remote connection setup failed"
-                        continue
+                        return
                     fi
                 else
                     print_info "Remote connection setup skipped"
-                    continue
+                    return
                 fi
             fi
             
@@ -1310,7 +1359,7 @@ show_main_menu() {
             if ! test_remote_mysql_connection; then
                 print_error "Cannot connect to remote MySQL server"
                 print_info "Please check your remote connection configuration (Option 11)"
-                continue
+                return
             fi
             
             print_info "Available databases on remote server:"
@@ -1331,11 +1380,11 @@ show_main_menu() {
                 if [[ $REPLY =~ ^[Yy]$ ]]; then
                     if ! setup_remote_mysql_connection; then
                         print_error "Remote connection setup failed"
-                        continue
+                        return
                     fi
                 else
                     print_info "Remote connection setup skipped"
-                    continue
+                    return
                 fi
             fi
             
@@ -1343,7 +1392,7 @@ show_main_menu() {
             if ! test_remote_mysql_connection; then
                 print_error "Cannot connect to remote MySQL server"
                 print_info "Please check your remote connection configuration (Option 11)"
-                continue
+                return
             fi
             
             print_info "Available databases on local server:"
@@ -1364,11 +1413,11 @@ show_main_menu() {
                 if [[ $REPLY =~ ^[Yy]$ ]]; then
                     if ! setup_remote_mysql_connection; then
                         print_error "Remote connection setup failed"
-                        continue
+                        return
                     fi
                 else
                     print_info "Remote connection setup skipped"
-                    continue
+                    return
                 fi
             fi
             
@@ -1376,7 +1425,7 @@ show_main_menu() {
             if ! test_remote_mysql_connection; then
                 print_error "Cannot connect to remote MySQL server"
                 print_info "Please check your remote connection configuration (Option 11)"
-                continue
+                return
             fi
             
             read -p "Enter local database name: " local_db
@@ -1407,11 +1456,11 @@ show_main_menu() {
                 if [[ $REPLY =~ ^[Yy]$ ]]; then
                     if ! setup_remote_mysql_connection; then
                         print_error "Remote connection setup failed"
-                        continue
+                        return
                     fi
                 else
                     print_info "Remote connection setup skipped"
-                    continue
+                    return
                 fi
             fi
             
@@ -1419,7 +1468,7 @@ show_main_menu() {
             if ! test_remote_mysql_connection; then
                 print_error "Cannot connect to remote MySQL server"
                 print_info "Please check your remote connection configuration (Option 11)"
-                continue
+                return
             fi
             
             list_remote_databases
@@ -1439,12 +1488,12 @@ show_main_menu() {
                 if [[ $REPLY =~ ^[Yy]$ ]]; then
                     if ! setup_remote_mysql_connection; then
                         print_error "Remote connection setup failed"
-                        continue
+                        return
                     fi
                 else
                     print_info "Remote connection setup skipped"
                     print_info "Use Option 11 to configure remote connection"
-                    continue
+                    return
                 fi
             fi
             
