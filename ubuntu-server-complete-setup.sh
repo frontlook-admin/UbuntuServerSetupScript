@@ -1977,11 +1977,41 @@ create_dotnet_systemd_service() {
         done
     fi
     
+    # If still no executable found, ask user for executable name
     if [[ -z "$main_executable" ]]; then
-        print_error "No .NET executable found in $app_path"
+        print_warning "No .NET executable automatically detected in $app_path"
         print_info "Available files:"
         ls -la "$app_path/"
-        return 1
+        echo
+        
+        while true; do
+            read -p "Enter the executable filename (without path): " user_executable
+            
+            if [[ -z "$user_executable" ]]; then
+                print_error "Executable name cannot be empty"
+                continue
+            fi
+            
+            if [[ -f "$app_path/$user_executable" ]]; then
+                if [[ -x "$app_path/$user_executable" ]]; then
+                    main_executable="$user_executable"
+                    exec_command="$app_path/$user_executable"
+                    print_success "Using executable: $user_executable"
+                    break
+                else
+                    print_error "File '$user_executable' is not executable. Making it executable..."
+                    chmod +x "$app_path/$user_executable"
+                    main_executable="$user_executable"
+                    exec_command="$app_path/$user_executable"
+                    print_success "Using executable: $user_executable"
+                    break
+                fi
+            else
+                print_error "File '$user_executable' not found in $app_path"
+                print_info "Available files:"
+                ls -1 "$app_path/"
+            fi
+        done
     fi
     
     # Create systemd service file
