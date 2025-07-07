@@ -603,8 +603,51 @@ validate_source_path() {
     fi
     
     # Check if it's a .NET application directory
-    if [[ ! -f "$source_path"/*.dll ]] && [[ ! -f "$source_path"/*.exe ]]; then
-        print_error "Directory does not appear to contain a .NET application (no .dll or .exe files found)"
+    # Look for various indicators of a .NET application
+    local has_dotnet_files=false
+    
+    # Check for .dll files (traditional .NET deployment)
+    if compgen -G "$source_path/*.dll" > /dev/null; then
+        has_dotnet_files=true
+        print_info "Found .dll files - traditional .NET deployment detected"
+    fi
+    
+    # Check for .exe files
+    if compgen -G "$source_path/*.exe" > /dev/null; then
+        has_dotnet_files=true
+        print_info "Found .exe files"
+    fi
+    
+    # Check for .NET configuration files (indicates .NET application)
+    if [[ -f "$source_path/appsettings.json" ]] || [[ -f "$source_path"/*.runtimeconfig.json ]] || [[ -f "$source_path"/*.deps.json ]]; then
+        has_dotnet_files=true
+        print_info "Found .NET configuration files"
+    fi
+    
+    # Check for Linux executable files (self-contained deployment)
+    if [[ "$has_dotnet_files" == "false" ]]; then
+        local executable_files=$(find "$source_path" -type f -executable 2>/dev/null)
+        if [[ -n "$executable_files" ]]; then
+            # Check if any executable might be a .NET application
+            for file in $executable_files; do
+                if file "$file" 2>/dev/null | grep -q "ELF.*executable"; then
+                    local basename_file=$(basename "$file")
+                    # Look for related .NET files
+                    if [[ -f "$source_path/$basename_file.deps.json" ]] || [[ -f "$source_path/$basename_file.runtimeconfig.json" ]] || [[ -f "$source_path/appsettings.json" ]]; then
+                        has_dotnet_files=true
+                        print_info "Found self-contained .NET executable: $basename_file"
+                        break
+                    fi
+                fi
+            done
+        fi
+    fi
+    
+    if [[ "$has_dotnet_files" == "false" ]]; then
+        print_error "Directory does not appear to contain a .NET application"
+        print_info "Looking for: .dll, .exe files, .NET config files, or self-contained executables"
+        print_info "Contents of directory:"
+        ls -la "$source_path/"
         return 1
     fi
     
@@ -1033,9 +1076,85 @@ create_systemd_service() {
         print_info ".NET CLI directory already exists: /var/www/.dotnet"
     fi
     
-    # Find the main DLL
-    local main_dll=$(find "$APP_DESTINATION_PATH" -name "*.dll" | head -n 1)
-    local main_dll_name=$(basename "$main_dll")
+    # Find the main executable file using sophisticated detection
+    local main_executable=""
+    local exec_command=""
+    
+    # First, try to find .dll files (traditional .NET deployment)
+    local main_dll=$(find "$APP_DESTINATION_PATH" -name "*.dll" -type f | head -1)
+    if [[ -n "$main_dll" ]]; then
+        local dll_name=$(basename "$main_dll")
+        main_executable="$dll_name"
+        exec_command="/usr/bin/dotnet ${APP_DESTINATION_PATH}/${dll_name}"
+        print_info "Found .dll file: $dll_name"
+    else
+        # Look for Linux executable files (self-contained deployment)
+        local executable_files=$(find "$APP_DESTINATION_PATH" -type f -executable | grep -E "(^[^/]*$|/[^/]*$)" | head -5)
+        
+        # Filter for potential .NET executables
+        for file in $executable_files; do
+            if [[ -f "$file" ]] && file "$file" 2>/dev/null | grep -q "ELF.*executable"; then
+                # Check if it's likely a .NET executable by looking for related files
+                local basename_file=$(basename "$file")
+                if [[ -f "$APP_DESTINATION_PATH/$basename_file.deps.json" ]] || [[ -f "$APP_DESTINATION_PATH/$basename_file.runtimeconfig.json" ]] || [[ -f "$APP_DESTINATION_PATH/appsettings.json" ]]; then
+                    main_executable="$basename_file"
+                    exec_command="$APP_DESTINATION_PATH/$basename_file"
+                    print_info "Found .NET executable: $basename_file"
+                    break
+                fi
+            fi
+        done
+    fi
+    
+    # If no executable found, try to find by app name
+    if [[ -z "$main_executable" ]]; then
+        # Try to find executable with same name as app
+        for potential_name in "$APP_NAME" "${APP_NAME,,}" "${APP_NAME^}"; do
+            if [[ -f "$APP_DESTINATION_PATH/$potential_name" ]] && [[ -x "$APP_DESTINATION_PATH/$potential_name" ]]; then
+                main_executable="$potential_name"
+                exec_command="$APP_DESTINATION_PATH/$potential_name"
+                print_info "Found executable by name: $potential_name"
+                break
+            fi
+        done
+    fi
+    
+    # If still no executable found, ask user for executable name
+    if [[ -z "$main_executable" ]]; then
+        print_warning "No .NET executable automatically detected in $APP_DESTINATION_PATH"
+        print_info "Available files:"
+        ls -la "$APP_DESTINATION_PATH/"
+        echo
+        
+        while true; do
+            read -p "Enter the executable filename (without path): " user_executable
+            
+            if [[ -z "$user_executable" ]]; then
+                print_error "Executable name cannot be empty"
+                continue
+            fi
+            
+            if [[ -f "$APP_DESTINATION_PATH/$user_executable" ]]; then
+                if [[ -x "$APP_DESTINATION_PATH/$user_executable" ]]; then
+                    main_executable="$user_executable"
+                    exec_command="$APP_DESTINATION_PATH/$user_executable"
+                    print_success "Using executable: $user_executable"
+                    break
+                else
+                    print_error "File '$user_executable' is not executable. Making it executable..."
+                    chmod +x "$APP_DESTINATION_PATH/$user_executable"
+                    main_executable="$user_executable"
+                    exec_command="$APP_DESTINATION_PATH/$user_executable"
+                    print_success "Using executable: $user_executable"
+                    break
+                fi
+            else
+                print_error "File '$user_executable' not found in $APP_DESTINATION_PATH"
+                print_info "Available files:"
+                ls -1 "$APP_DESTINATION_PATH/"
+            fi
+        done
+    fi
     
     # Create service file
     if [[ "$USE_HTTPS" == "true" ]]; then
@@ -1048,7 +1167,7 @@ After=network.target
 [Service]
 Type=notify
 WorkingDirectory=${APP_DESTINATION_PATH}
-ExecStart=/usr/bin/dotnet ${APP_DESTINATION_PATH}/${main_dll_name} --urls=https://${BIND_ADDRESS}:${APP_PORT}
+ExecStart=${exec_command} --urls=https://${BIND_ADDRESS}:${APP_PORT}
 Restart=always
 RestartSec=10
 KillSignal=SIGINT
@@ -1076,7 +1195,7 @@ After=network.target
 [Service]
 Type=notify
 WorkingDirectory=${APP_DESTINATION_PATH}
-ExecStart=/usr/bin/dotnet ${APP_DESTINATION_PATH}/${main_dll_name} --urls=http://${BIND_ADDRESS}:${APP_PORT}
+ExecStart=${exec_command} --urls=http://${BIND_ADDRESS}:${APP_PORT}
 Restart=always
 RestartSec=10
 KillSignal=SIGINT

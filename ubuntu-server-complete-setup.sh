@@ -67,6 +67,14 @@ DOTNET_HOSTING_MODE=""
 DOTNET_NGINX_SITE_NAME=""
 DOTNET_SERVICE_NAME=""
 DOTNET_APP_VERSION=""
+DOTNET_USE_HTTPS=""
+DOTNET_BIND_ADDRESS=""
+DOTNET_USE_NGINX=""
+
+# SSL Certificate Management Variables
+SSL_CERT_PATH=""
+SSL_KEY_PATH=""
+SSL_CERT_REGISTRY="/etc/ssl/dotnet-apps/.cert_registry"
 
 # =============================================================================
 # UTILITY FUNCTIONS
@@ -1288,6 +1296,479 @@ validate_dotnet_subdirectory() {
     return 0
 }
 
+# =============================================================================
+# HTTPS CONFIGURATION FUNCTIONS
+# =============================================================================
+
+# SSL Certificate Registry Management
+register_ssl_certificate() {
+    local cert_name="$1"
+    local cert_path="$2"
+    local key_path="$3"
+    local domain="$4"
+    local created_date="$(date '+%Y-%m-%d %H:%M:%S')"
+    
+    # Create SSL directory and registry if they don't exist
+    mkdir -p "$(dirname "$SSL_CERT_REGISTRY")"
+    
+    # Add entry to registry
+    echo "$cert_name|$cert_path|$key_path|$domain|$created_date" >> "$SSL_CERT_REGISTRY"
+    
+    print_info "Certificate registered: $cert_name"
+}
+
+remove_expired_certificates() {
+    local ssl_dir="/etc/ssl/dotnet-apps"
+    
+    if [[ ! -f "$SSL_CERT_REGISTRY" ]]; then
+        return 0
+    fi
+    
+    print_info "Checking for expired certificates..."
+    
+    # Create temp file for updated registry
+    local temp_registry=$(mktemp)
+    
+    # Read registry and check each certificate
+    while IFS='|' read -r cert_name cert_path key_path domain created_date; do
+        if [[ -f "$cert_path" ]]; then
+            # Check if certificate is expired
+            if openssl x509 -in "$cert_path" -noout -checkend 0 &>/dev/null; then
+                # Certificate is valid, keep it
+                echo "$cert_name|$cert_path|$key_path|$domain|$created_date" >> "$temp_registry"
+            else
+                # Certificate is expired, remove it
+                print_info "Removing expired certificate: $cert_name"
+                rm -f "$cert_path" "$key_path" 2>/dev/null || true
+            fi
+        fi
+    done < "$SSL_CERT_REGISTRY"
+    
+    # Replace registry with updated version
+    mv "$temp_registry" "$SSL_CERT_REGISTRY"
+}
+
+get_available_certificates() {
+    local ssl_dir="/etc/ssl/dotnet-apps"
+    
+    if [[ ! -f "$SSL_CERT_REGISTRY" ]]; then
+        return 0
+    fi
+    
+    # Remove expired certificates first
+    remove_expired_certificates
+    
+    # Return available certificates
+    if [[ -f "$SSL_CERT_REGISTRY" && -s "$SSL_CERT_REGISTRY" ]]; then
+        cat "$SSL_CERT_REGISTRY"
+    fi
+}
+
+list_ssl_certificates() {
+    print_header "Available SSL Certificates (Non-Expired)"
+    
+    # Remove expired certificates first
+    remove_expired_certificates
+    
+    local cert_registry_data=$(get_available_certificates)
+    
+    if [[ -z "$cert_registry_data" ]]; then
+        print_info "No SSL certificates found"
+        return 0
+    fi
+    
+    local certs_found=0
+    
+    # List certificates from registry
+    echo "$cert_registry_data" | while IFS='|' read -r cert_name cert_path key_path domain created_date; do
+        if [[ -f "$cert_path" && -f "$key_path" ]]; then
+            echo
+            print_info "Certificate: $cert_name"
+            echo "  Certificate file: $cert_path"
+            echo "  Key file: $key_path"
+            echo "  Domain: $domain"
+            echo "  Created: $created_date"
+            echo "  Expires: $(openssl x509 -in "$cert_path" -noout -dates 2>/dev/null | grep notAfter | sed 's/notAfter=//')"
+            echo "  Days remaining: $(openssl x509 -in "$cert_path" -noout -dates 2>/dev/null | grep notAfter | sed 's/notAfter=//' | xargs -I {} date -d {} '+%s' | xargs -I {} expr \( {} - $(date '+%s') \) / 86400)"
+            certs_found=$((certs_found + 1))
+        fi
+    done
+    
+    local total_certs=$(echo "$cert_registry_data" | wc -l)
+    print_info "Found $total_certs valid SSL certificate(s)"
+    
+    return 0
+}
+
+create_ssl_certificate() {
+    print_header "Create SSL Certificate"
+    
+    # Create SSL directory
+    local ssl_dir="/etc/ssl/dotnet-apps"
+    mkdir -p "$ssl_dir"
+    
+    # Get certificate name
+    read -p "Enter certificate name (alphanumeric, hyphens, underscores only): " cert_name
+    
+    # Validate certificate name
+    if [[ ! "$cert_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        print_error "Invalid certificate name. Use only letters, numbers, hyphens, and underscores."
+        return 1
+    fi
+    
+    if [[ -z "$cert_name" ]]; then
+        print_error "Certificate name cannot be empty"
+        return 1
+    fi
+    
+    # Check if certificate already exists in registry
+    if [[ -f "$SSL_CERT_REGISTRY" ]]; then
+        if grep -q "^$cert_name|" "$SSL_CERT_REGISTRY"; then
+            print_warning "Certificate '$cert_name' already exists in registry"
+            read -p "Overwrite existing certificate? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                print_info "Certificate creation cancelled"
+                return 0
+            fi
+            
+            # Remove existing certificate from registry
+            grep -v "^$cert_name|" "$SSL_CERT_REGISTRY" > "${SSL_CERT_REGISTRY}.tmp" && mv "${SSL_CERT_REGISTRY}.tmp" "$SSL_CERT_REGISTRY"
+        fi
+    fi
+    
+    # Set certificate paths
+    local cert_path="$ssl_dir/${cert_name}.crt"
+    local key_path="$ssl_dir/${cert_name}.key"
+    
+    # Get domain name
+    read -p "Enter domain name or IP address [localhost]: " domain
+    domain=${domain:-localhost}
+    
+    # Get certificate validity period
+    read -p "Enter certificate validity in days [365]: " validity_days
+    validity_days=${validity_days:-365}
+    
+    # Validate validity days
+    if [[ ! "$validity_days" =~ ^[0-9]+$ ]]; then
+        print_error "Invalid validity period. Must be a number."
+        return 1
+    fi
+    
+    # Create certificate
+    print_info "Creating SSL certificate for domain: $domain (valid for $validity_days days)"
+    
+    if ! openssl req -x509 -newkey rsa:4096 -keyout "$key_path" -out "$cert_path" -days "$validity_days" -nodes -subj "/CN=$domain"; then
+        print_error "Failed to create SSL certificate"
+        return 1
+    fi
+    
+    # Set proper permissions
+    chown www-data:www-data "$cert_path" "$key_path"
+    chmod 644 "$cert_path"
+    chmod 600 "$key_path"
+    
+    # Register certificate
+    register_ssl_certificate "$cert_name" "$cert_path" "$key_path" "$domain"
+    
+    print_success "SSL certificate created successfully"
+    print_info "Certificate: $cert_path"
+    print_info "Private Key: $key_path"
+    print_info "Domain: $domain"
+    print_info "Valid for: $validity_days days"
+    
+    return 0
+}
+
+remove_ssl_certificate() {
+    print_header "Remove SSL Certificate"
+    
+    # Remove expired certificates first
+    remove_expired_certificates
+    
+    # Get available certificates
+    local cert_registry_data=$(get_available_certificates)
+    
+    if [[ -z "$cert_registry_data" ]]; then
+        print_info "No SSL certificates found"
+        return 0
+    fi
+    
+    print_info "Available certificates:"
+    echo
+    
+    # Display available certificates with numbers
+    local cert_count=0
+    echo "$cert_registry_data" | while IFS='|' read -r cert_name cert_path key_path cert_domain created_date; do
+        cert_count=$((cert_count + 1))
+        
+        echo "$cert_count) $cert_name (domain: $cert_domain)"
+        echo "   Created: $created_date"
+        echo "   Expires: $(openssl x509 -in "$cert_path" -noout -dates 2>/dev/null | grep notAfter | sed 's/notAfter=//')"
+        echo "   Certificate: $cert_path"
+        echo "   Key: $key_path"
+        echo
+    done
+    
+    # Get the actual count
+    local total_certs=$(echo "$cert_registry_data" | wc -l)
+    
+    if [[ $total_certs -eq 0 ]]; then
+        print_info "No certificates to remove"
+        return 0
+    fi
+    
+    read -p "Select certificate number to remove (1-$total_certs): " -r
+    local cert_choice=${REPLY:-0}
+    
+    if [[ ! "$cert_choice" =~ ^[0-9]+$ ]] || [[ "$cert_choice" -lt 1 ]] || [[ "$cert_choice" -gt "$total_certs" ]]; then
+        print_error "Invalid certificate selection"
+        return 1
+    fi
+    
+    # Get selected certificate info
+    local selected_cert_info=$(echo "$cert_registry_data" | sed -n "${cert_choice}p")
+    IFS='|' read -r selected_cert_name selected_cert_path selected_key_path selected_domain selected_created_date <<< "$selected_cert_info"
+    
+    print_warning "You are about to remove the following certificate:"
+    echo "  Name: $selected_cert_name"
+    echo "  Domain: $selected_domain"
+    echo "  Certificate: $selected_cert_path"
+    echo "  Key: $selected_key_path"
+    echo "  Created: $selected_created_date"
+    echo
+    
+    read -p "Are you sure you want to remove this certificate? (y/N): " -n 1 -r
+    echo
+    
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Certificate removal cancelled"
+        return 0
+    fi
+    
+    # Remove certificate files
+    if [[ -f "$selected_cert_path" ]]; then
+        rm -f "$selected_cert_path"
+        print_info "Certificate file removed: $selected_cert_path"
+    fi
+    
+    if [[ -f "$selected_key_path" ]]; then
+        rm -f "$selected_key_path"
+        print_info "Key file removed: $selected_key_path"
+    fi
+    
+    # Remove from registry
+    if [[ -f "$SSL_CERT_REGISTRY" ]]; then
+        grep -v "^$selected_cert_name|" "$SSL_CERT_REGISTRY" > "${SSL_CERT_REGISTRY}.tmp" && mv "${SSL_CERT_REGISTRY}.tmp" "$SSL_CERT_REGISTRY"
+        print_info "Certificate removed from registry"
+    fi
+    
+    print_success "SSL certificate '$selected_cert_name' removed successfully"
+    
+    return 0
+}
+
+# Configure HTTPS for .NET application deployment
+configure_https() {
+    local app_name="$1"
+    local domain="$2"
+    
+    print_header "Configuring HTTPS for $app_name"
+    
+    # Create SSL directory
+    local ssl_dir="/etc/ssl/dotnet-apps"
+    mkdir -p "$ssl_dir"
+    
+    # Remove expired certificates first
+    remove_expired_certificates
+    
+    # Get available certificates
+    local cert_registry_data=$(get_available_certificates)
+    
+    echo
+    echo "SSL Certificate options:"
+    echo "1) Use existing certificate"
+    echo "2) Create new certificate"
+    echo "3) Cancel HTTPS configuration"
+    echo
+    
+    read -p "Select option (1-3) [1]: " -r
+    local choice=${REPLY:-1}
+    
+    case "$choice" in
+        1)
+            if [[ -z "$cert_registry_data" ]]; then
+                print_error "No existing certificates found"
+                return 1
+            fi
+            
+            print_info "Available certificates:"
+            echo
+            
+            # Display available certificates with numbers
+            local cert_count=0
+            local cert_names=()
+            local cert_paths=()
+            local key_paths=()
+            
+            echo "$cert_registry_data" | while IFS='|' read -r cert_name cert_path key_path cert_domain created_date; do
+                cert_count=$((cert_count + 1))
+                cert_names+=("$cert_name")
+                cert_paths+=("$cert_path")
+                key_paths+=("$key_path")
+                
+                echo "$cert_count) $cert_name (domain: $cert_domain)"
+                echo "   Created: $created_date"
+                echo "   Expires: $(openssl x509 -in "$cert_path" -noout -dates 2>/dev/null | grep notAfter | sed 's/notAfter=//')"
+                echo
+            done
+            
+            if [[ $cert_count -eq 0 ]]; then
+                print_error "No valid certificates found"
+                return 1
+            fi
+            
+            read -p "Select certificate number (1-$cert_count): " -r
+            local cert_choice=${REPLY:-1}
+            
+            if [[ ! "$cert_choice" =~ ^[0-9]+$ ]] || [[ "$cert_choice" -lt 1 ]] || [[ "$cert_choice" -gt "$cert_count" ]]; then
+                print_error "Invalid certificate selection"
+                return 1
+            fi
+            
+            # Get selected certificate info
+            local selected_cert_info=$(echo "$cert_registry_data" | sed -n "${cert_choice}p")
+            IFS='|' read -r selected_cert_name selected_cert_path selected_key_path selected_domain selected_created_date <<< "$selected_cert_info"
+            
+            SSL_CERT_PATH="$selected_cert_path"
+            SSL_KEY_PATH="$selected_key_path"
+            
+            print_success "Selected certificate: $selected_cert_name"
+            print_info "Certificate: $SSL_CERT_PATH"
+            print_info "Private Key: $SSL_KEY_PATH"
+            
+            # Ensure proper permissions
+            chown www-data:www-data "$SSL_CERT_PATH" "$SSL_KEY_PATH"
+            chmod 644 "$SSL_CERT_PATH"
+            chmod 600 "$SSL_KEY_PATH"
+            
+            return 0
+            ;;
+        2)
+            # Get certificate name
+            read -p "Enter certificate name for $app_name [${app_name}-cert]: " cert_name
+            cert_name=${cert_name:-"${app_name}-cert"}
+            
+            # Validate certificate name
+            if [[ ! "$cert_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+                print_error "Invalid certificate name. Use only letters, numbers, hyphens, and underscores."
+                return 1
+            fi
+            
+            # Check if certificate already exists in registry
+            if [[ -f "$SSL_CERT_REGISTRY" ]]; then
+                if grep -q "^$cert_name|" "$SSL_CERT_REGISTRY"; then
+                    print_warning "Certificate '$cert_name' already exists in registry"
+                    read -p "Overwrite existing certificate? (y/N): " -n 1 -r
+                    echo
+                    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                        print_info "Certificate creation cancelled"
+                        return 1
+                    fi
+                    
+                    # Remove existing certificate from registry
+                    grep -v "^$cert_name|" "$SSL_CERT_REGISTRY" > "${SSL_CERT_REGISTRY}.tmp" && mv "${SSL_CERT_REGISTRY}.tmp" "$SSL_CERT_REGISTRY"
+                fi
+            fi
+            
+            # Set certificate paths
+            SSL_CERT_PATH="$ssl_dir/${cert_name}.crt"
+            SSL_KEY_PATH="$ssl_dir/${cert_name}.key"
+            
+            # Get certificate validity period
+            read -p "Enter certificate validity in days [365]: " validity_days
+            validity_days=${validity_days:-365}
+            
+            # Validate validity days
+            if [[ ! "$validity_days" =~ ^[0-9]+$ ]]; then
+                print_error "Invalid validity period. Must be a number."
+                return 1
+            fi
+            
+            # Generate self-signed certificate
+            print_info "Generating self-signed SSL certificate for domain: ${domain:-localhost}"
+            if ! openssl req -x509 -newkey rsa:4096 -keyout "$SSL_KEY_PATH" -out "$SSL_CERT_PATH" -days "$validity_days" -nodes -subj "/CN=${domain:-localhost}"; then
+                print_error "Failed to generate SSL certificate"
+                return 1
+            fi
+            
+            # Set proper permissions
+            chown www-data:www-data "$SSL_CERT_PATH" "$SSL_KEY_PATH"
+            chmod 644 "$SSL_CERT_PATH"
+            chmod 600 "$SSL_KEY_PATH"
+            
+            # Register certificate
+            register_ssl_certificate "$cert_name" "$SSL_CERT_PATH" "$SSL_KEY_PATH" "${domain:-localhost}"
+            
+            print_success "SSL certificate created and registered successfully"
+            print_info "Certificate: $SSL_CERT_PATH"
+            print_info "Private Key: $SSL_KEY_PATH"
+            
+            return 0
+            ;;
+        3)
+            print_info "HTTPS configuration cancelled"
+            return 1
+            ;;
+        *)
+            print_error "Invalid choice"
+            return 1
+            ;;
+    esac
+}
+
+ask_https_configuration() {
+    echo
+    print_info "HTTPS Configuration"
+    echo "1) HTTP only (default, uses nginx reverse proxy)"
+    echo "2) HTTPS direct (application serves HTTPS directly)"
+    echo
+    
+    read -p "Select configuration (1-2) [1]: " -r
+    local choice=${REPLY:-1}
+    
+    case "$choice" in
+        1)
+            DOTNET_USE_HTTPS="false"
+            DOTNET_USE_NGINX="true"
+            DOTNET_BIND_ADDRESS="localhost"
+            print_info "Selected: HTTP only (nginx reverse proxy)"
+            ;;
+        2)
+            DOTNET_USE_HTTPS="true"
+            DOTNET_USE_NGINX="false"
+            DOTNET_BIND_ADDRESS="0.0.0.0"
+            print_info "Selected: HTTPS direct"
+            
+            # Ask for domain name
+            read -p "Enter domain name or IP address for SSL certificate [$(hostname -I | awk '{print $1}')]: " -r
+            local domain=${REPLY:-$(hostname -I | awk '{print $1}')}
+            
+            # Configure SSL
+            if ! configure_https "$DOTNET_APP_NAME" "$domain"; then
+                print_error "Failed to configure HTTPS"
+                return 1
+            fi
+            ;;
+        *)
+            print_error "Invalid choice"
+            return 1
+            ;;
+    esac
+    
+    return 0
+}
+
 # System requirements check for .NET deployment
 check_dotnet_deployment_requirements() {
     print_header "Checking .NET Web App Deployment Requirements"
@@ -1325,6 +1806,13 @@ check_dotnet_deployment_requirements() {
 configure_dotnet_deployment() {
     print_header "Configuring .NET Web Application Deployment"
     
+    # Initialize default values
+    DOTNET_USE_HTTPS="false"
+    DOTNET_USE_NGINX="true"
+    DOTNET_BIND_ADDRESS="localhost"
+    SSL_CERT_PATH=""
+    SSL_KEY_PATH=""
+    
     # Get app name
     while true; do
         read -p "Enter application name (letters, numbers, hyphens, underscores only): " DOTNET_APP_NAME
@@ -1348,6 +1836,12 @@ configure_dotnet_deployment() {
             break
         fi
     done
+    
+    # Configure HTTPS settings
+    if ! ask_https_configuration; then
+        print_error "HTTPS configuration failed"
+        return 1
+    fi
     
     # Get hosting mode
     while true; do
@@ -1392,6 +1886,11 @@ configure_dotnet_deployment() {
     echo -e "${CYAN}Source Path:${NC} $DOTNET_APP_SOURCE_PATH"
     echo -e "${CYAN}Destination Path:${NC} $DOTNET_APP_DESTINATION_PATH"
     echo -e "${CYAN}Port:${NC} $DOTNET_APP_PORT"
+    echo -e "${CYAN}HTTPS Mode:${NC} $([[ "$DOTNET_USE_HTTPS" == "true" ]] && echo "Direct HTTPS" || echo "HTTP (nginx proxy)")"
+    if [[ "$DOTNET_USE_HTTPS" == "true" ]]; then
+        echo -e "${CYAN}SSL Certificate:${NC} $SSL_CERT_PATH"
+        echo -e "${CYAN}SSL Key:${NC} $SSL_KEY_PATH"
+    fi
     echo -e "${CYAN}Hosting Mode:${NC} $DOTNET_HOSTING_MODE"
     if [[ "$DOTNET_HOSTING_MODE" == "subdirectory" ]]; then
         echo -e "${CYAN}Subdirectory:${NC} $DOTNET_APP_SUBDIRECTORY"
@@ -1471,6 +1970,14 @@ create_dotnet_systemd_service() {
         return 1
     fi
     
+    # Determine URLs based on HTTPS configuration
+    local urls
+    if [[ "$DOTNET_USE_HTTPS" == "true" ]]; then
+        urls="https://$DOTNET_BIND_ADDRESS:$DOTNET_APP_PORT"
+    else
+        urls="http://$DOTNET_BIND_ADDRESS:$DOTNET_APP_PORT"
+    fi
+    
     cat > "$service_file" << EOF
 [Unit]
 Description=.NET Web App - $DOTNET_APP_NAME
@@ -1481,11 +1988,15 @@ Type=notify
 User=www-data
 Group=www-data
 WorkingDirectory=$DOTNET_APP_DESTINATION_PATH
-ExecStart=/usr/bin/dotnet $main_exe --urls=http://localhost:$DOTNET_APP_PORT
+ExecStart=/usr/bin/dotnet $main_exe --urls=$urls
 Restart=always
 RestartSec=10
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+$(if [[ "$DOTNET_USE_HTTPS" == "true" ]]; then
+    echo "Environment=ASPNETCORE_Kestrel__Certificates__Default__Path=$SSL_CERT_PATH"
+    echo "Environment=ASPNETCORE_Kestrel__Certificates__Default__KeyPath=$SSL_KEY_PATH"
+fi)
 
 [Install]
 WantedBy=multi-user.target
@@ -1568,12 +2079,35 @@ display_dotnet_app_info() {
     echo
     
     echo -e "${CYAN}Access URLs:${NC}"
+    local protocol="http"
+    local port_suffix=""
+    
+    if [[ "$DOTNET_USE_HTTPS" == "true" ]]; then
+        protocol="https"
+        if [[ "$DOTNET_APP_PORT" != "443" ]]; then
+            port_suffix=":$DOTNET_APP_PORT"
+        fi
+    elif [[ "$DOTNET_USE_NGINX" == "false" ]]; then
+        # Direct HTTP access
+        port_suffix=":$DOTNET_APP_PORT"
+    fi
+    
     if [[ "$DOTNET_HOSTING_MODE" == "direct" ]]; then
-        echo -e "  http://localhost/"
-        echo -e "  http://$(hostname -I | awk '{print $1}')/"
+        if [[ "$DOTNET_USE_NGINX" == "true" ]]; then
+            echo -e "  ${protocol}://localhost/"
+            echo -e "  ${protocol}://$(hostname -I | awk '{print $1}')/"
+        else
+            echo -e "  ${protocol}://localhost${port_suffix}/"
+            echo -e "  ${protocol}://$(hostname -I | awk '{print $1}')${port_suffix}/"
+        fi
     else
-        echo -e "  http://localhost/$DOTNET_APP_SUBDIRECTORY/"
-        echo -e "  http://$(hostname -I | awk '{print $1}')/$DOTNET_APP_SUBDIRECTORY/"
+        if [[ "$DOTNET_USE_NGINX" == "true" ]]; then
+            echo -e "  ${protocol}://localhost/$DOTNET_APP_SUBDIRECTORY/"
+            echo -e "  ${protocol}://$(hostname -I | awk '{print $1}')/$DOTNET_APP_SUBDIRECTORY/"
+        else
+            echo -e "  ${protocol}://localhost${port_suffix}/$DOTNET_APP_SUBDIRECTORY/"
+            echo -e "  ${protocol}://$(hostname -I | awk '{print $1}')${port_suffix}/$DOTNET_APP_SUBDIRECTORY/"
+        fi
     fi
     echo
     
@@ -1604,18 +2138,28 @@ dotnet_web_app_deployment_menu() {
         echo -e "${WHITE}Please select an option:${NC}"
         echo
         echo -e "${CYAN}╔════════════════════════════════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${CYAN}║${NC} ${GREEN}DEPLOYMENT OPTIONS${NC}                                                                       ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${GREEN}DEPLOYMENT OPTIONS${NC}                                                                      ${CYAN}║${NC}"
         echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}1)${NC} Deploy New .NET Web Application                                                     ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}2)${NC} Check System Requirements                                                           ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}3)${NC} List Deployed Applications                                                          ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}4)${NC} Manage Application Service                                                          ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}5)${NC} Remove Application                                                                  ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}1)${NC} Deploy new .NET web application                                                     ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}2)${NC} Check system requirements                                                           ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}3)${NC} Install dependencies                                                                ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${PURPLE}MANAGEMENT OPTIONS${NC}                                                                      ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}4)${NC} Show deployment status                                                              ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}5)${NC} Restart application                                                                 ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}6)${NC} Remove deployment                                                                   ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${BLUE}SSL CERTIFICATE MANAGEMENT${NC}                                                          ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}7)${NC} List SSL certificates                                                               ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}8)${NC} Create SSL certificate                                                              ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}9)${NC} Remove SSL certificate                                                              ${CYAN}║${NC}"
         echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${RED}0)${NC} Back to Main Menu                                                                   ${CYAN}║${NC}"
         echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════════════════════╝${NC}"
         echo
-        echo -e "${WHITE}Enter your choice (0-5): ${NC}\c"
+        echo -e "${WHITE}Enter your choice (0-9): ${NC}\c"
         read choice
         
         case $choice in
@@ -1634,18 +2178,38 @@ dotnet_web_app_deployment_menu() {
                 read -p "Press Enter to continue..."
                 ;;
             3)
-                print_info "Listing Deployed Applications..."
-                list_deployed_dotnet_apps
+                print_info "Installing Dependencies..."
+                # Add dependency installation logic here
                 read -p "Press Enter to continue..."
                 ;;
             4)
-                print_info "Managing Application Service..."
-                manage_dotnet_app_service
+                print_info "Showing Deployment Status..."
+                list_deployed_dotnet_apps
                 read -p "Press Enter to continue..."
                 ;;
             5)
+                print_info "Restarting Application..."
+                manage_dotnet_app_service
+                read -p "Press Enter to continue..."
+                ;;
+            6)
                 print_info "Removing Application..."
                 remove_dotnet_app
+                read -p "Press Enter to continue..."
+                ;;
+            7)
+                print_info "Listing SSL Certificates..."
+                list_ssl_certificates
+                read -p "Press Enter to continue..."
+                ;;
+            8)
+                print_info "Creating SSL Certificate..."
+                create_ssl_certificate
+                read -p "Press Enter to continue..."
+                ;;
+            9)
+                print_info "Removing SSL Certificate..."
+                remove_ssl_certificate
                 read -p "Press Enter to continue..."
                 ;;
             0)
@@ -1653,7 +2217,7 @@ dotnet_web_app_deployment_menu() {
                 break
                 ;;
             *)
-                print_error "Invalid option. Please select 0-5."
+                print_error "Invalid option. Please select 0-9."
                 sleep 2
                 ;;
         esac
@@ -2211,13 +2775,17 @@ dotnet_web_app_deployment_menu() {
         echo -e "${CYAN}║${NC} ${YELLOW}4)${NC} Check Application Status                                                         ${CYAN}║${NC}"
         echo -e "${CYAN}║${NC} ${YELLOW}5)${NC} Restart Application                                                              ${CYAN}║${NC}"
         echo -e "${CYAN}║${NC} ${YELLOW}6)${NC} Remove Application                                                               ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}7)${NC} View Application Logs                                                            ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} ${YELLOW}8)${NC} List All Applications                                                            ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${BLUE}SSL CERTIFICATE MANAGEMENT${NC}                                                       ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}7)${NC} List SSL Certificates                                                            ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}8)${NC} Create SSL Certificate                                                           ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}9)${NC} Remove SSL Certificate                                                           ${CYAN}║${NC}"
         echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${RED}0)${NC} Back to Main Menu                                                                ${CYAN}║${NC}"
         echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════════════════════╝${NC}"
         echo
-        echo -e "${WHITE}Enter your choice (0-8): ${NC}\\c"
+        echo -e "${WHITE}Enter your choice (0-9): ${NC}\\c"
         
         read -r choice
         
@@ -2241,16 +2809,19 @@ dotnet_web_app_deployment_menu() {
                 remove_dotnet_application
                 ;;
             7)
-                view_dotnet_application_logs
+                list_ssl_certificates
                 ;;
             8)
-                list_dotnet_applications
+                create_ssl_certificate
+                ;;
+            9)
+                remove_ssl_certificate
                 ;;
             0)
                 return 0
                 ;;
             *)
-                print_error "Invalid option. Please select 0-8."
+                print_error "Invalid option. Please select 0-9."
                 sleep 2
                 ;;
         esac
