@@ -253,7 +253,7 @@ FLUSH PRIVILEGES;
 EOF
 
     # Create MySQL configuration file
-    print_info "Creating MySQL configuration..."
+    print_info "Creating MySQL configuration with lower_case_table_names for cross-platform compatibility..."
     cat > /etc/mysql/conf.d/custom.cnf <<EOF
 [mysql]
 default-character-set = utf8mb4
@@ -261,6 +261,8 @@ default-character-set = utf8mb4
 [mysqld]
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
+# Table names are stored in lowercase for cross-platform compatibility
+lower_case_table_names = 1
 max_connections = 200
 innodb_buffer_pool_size = 256M
 slow_query_log = 1
@@ -271,11 +273,195 @@ EOF
     # Restart MySQL to apply configuration
     systemctl restart mysql
 
-    print_success "MySQL Server installation completed"
+    print_success "MySQL Server installation completed with lower_case_table_names=1 for cross-platform compatibility"
 
     # Display MySQL information
     print_info "MySQL Status:"
     systemctl status mysql --no-pager -l
+}
+
+# =============================================================================
+# MYSQL UNINSTALLATION
+# =============================================================================
+
+uninstall_mysql() {
+    print_header "MySQL Uninstallation"
+
+    log_message "Starting MySQL uninstallation"
+
+    # Check if MySQL is installed
+    if ! command -v mysql &> /dev/null && ! systemctl is-active --quiet mysql 2>/dev/null; then
+        print_warning "MySQL does not appear to be installed on this system"
+        return 0
+    fi
+
+    print_warning "═══════════════════════════════════════════════════════════════════════"
+    print_warning "                          ⚠ WARNING ⚠"
+    print_warning "═══════════════════════════════════════════════════════════════════════"
+    print_warning "This will completely remove MySQL Server from your system!"
+    print_warning "This action cannot be undone without a full reinstallation."
+    echo
+    
+    # Display what will be removed
+    print_info "The following will be removed:"
+    echo "  • MySQL Server service"
+    echo "  • MySQL packages and dependencies"
+    echo "  • MySQL configuration files"
+    echo "  • MySQL log files"
+    echo
+    
+    # Ask about data removal
+    print_warning "DATA REMOVAL OPTIONS:"
+    echo "  1) Standard uninstall (keep data directories for potential recovery)"
+    echo "  2) Complete removal (remove ALL data and databases - DESTRUCTIVE!)"
+    echo
+    echo -e "${WHITE}Select uninstall type (1-2): ${NC}\c"
+    read -r uninstall_type
+    
+    local remove_data=false
+    case $uninstall_type in
+        1)
+            print_info "Standard uninstall selected - data directories will be preserved"
+            remove_data=false
+            ;;
+        2)
+            print_warning "Complete removal selected - ALL DATA WILL BE DELETED!"
+            echo
+            print_warning "This will permanently delete:"
+            echo "  • All databases and tables"
+            echo "  • All user data"
+            echo "  • MySQL data directory (/var/lib/mysql)"
+            echo "  • Any custom databases you have created"
+            echo
+            echo -e "${RED}Type 'DELETE ALL DATA' to confirm complete removal: ${NC}\c"
+            read -r confirm_delete
+            
+            if [[ "$confirm_delete" == "DELETE ALL DATA" ]]; then
+                remove_data=true
+                print_warning "Complete data removal confirmed"
+            else
+                print_info "Data removal not confirmed - switching to standard uninstall"
+                remove_data=false
+            fi
+            ;;
+        *)
+            print_error "Invalid option. Defaulting to standard uninstall."
+            remove_data=false
+            ;;
+    esac
+    
+    echo
+    echo -e "${RED}Are you absolutely sure you want to proceed with MySQL uninstallation? (y/N): ${NC}\c"
+    read -n 1 -r final_confirm
+    echo
+    
+    if [[ ! "$final_confirm" =~ ^[Yy]$ ]]; then
+        print_info "MySQL uninstallation cancelled"
+        return 0
+    fi
+
+    # Backup existing databases if doing standard uninstall
+    if [[ "$remove_data" == false ]]; then
+        print_info "Creating database backup before uninstallation..."
+        local backup_dir="/var/backups/mysql-uninstall-$(date +%Y%m%d-%H%M%S)"
+        mkdir -p "$backup_dir"
+        
+        if systemctl is-active --quiet mysql; then
+            # Try to backup all databases
+            if command -v mysqldump &> /dev/null; then
+                print_info "Attempting to backup all databases..."
+                mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" --all-databases > "$backup_dir/all-databases.sql" 2>/dev/null || {
+                    print_warning "Could not create SQL backup (possibly due to authentication)"
+                }
+            fi
+            
+            # Copy data directory
+            if [[ -d /var/lib/mysql ]]; then
+                print_info "Copying MySQL data directory..."
+                cp -r /var/lib/mysql "$backup_dir/mysql-data-backup" 2>/dev/null || {
+                    print_warning "Could not copy data directory"
+                }
+            fi
+        fi
+        
+        print_info "Backup created at: $backup_dir"
+    fi
+
+    # Stop MySQL service
+    print_info "Stopping MySQL service..."
+    systemctl stop mysql 2>/dev/null || true
+    systemctl disable mysql 2>/dev/null || true
+
+    # Remove MySQL packages
+    print_info "Removing MySQL packages..."
+    
+    # Stop any remaining MySQL processes
+    pkill -f mysql 2>/dev/null || true
+    
+    # Remove MySQL packages
+    apt-get remove --purge -y mysql-server mysql-client mysql-common mysql-server-core-* mysql-client-core-* >> "$LOG_FILE" 2>&1
+    
+    # Remove additional MySQL packages that might be installed
+    apt-get remove --purge -y mysql-* >> "$LOG_FILE" 2>&1
+    
+    # Clean up package manager
+    apt-get autoremove -y >> "$LOG_FILE" 2>&1
+    apt-get autoclean >> "$LOG_FILE" 2>&1
+
+    # Remove configuration files
+    print_info "Removing MySQL configuration files..."
+    rm -rf /etc/mysql 2>/dev/null || true
+    rm -f /etc/mysql/my.cnf 2>/dev/null || true
+    rm -f /etc/mysql/mysql.conf.d/* 2>/dev/null || true
+    rm -f /etc/mysql/conf.d/* 2>/dev/null || true
+
+    # Remove log files
+    print_info "Removing MySQL log files..."
+    rm -rf /var/log/mysql 2>/dev/null || true
+    rm -f /var/log/mysql.* 2>/dev/null || true
+
+    # Remove run files
+    print_info "Removing MySQL runtime files..."
+    rm -rf /var/run/mysqld 2>/dev/null || true
+    rm -rf /run/mysqld 2>/dev/null || true
+
+    # Remove data directory if requested
+    if [[ "$remove_data" == true ]]; then
+        print_warning "Removing MySQL data directory and ALL databases..."
+        rm -rf /var/lib/mysql 2>/dev/null || true
+        print_warning "All MySQL data has been permanently deleted!"
+    else
+        print_info "MySQL data directory preserved at: /var/lib/mysql"
+        print_info "You can restore data if you reinstall MySQL"
+    fi
+
+    # Remove MySQL user and group
+    print_info "Removing MySQL user and group..."
+    userdel mysql 2>/dev/null || true
+    groupdel mysql 2>/dev/null || true
+
+    # Remove any remaining MySQL-related files
+    print_info "Cleaning up remaining MySQL files..."
+    rm -f /tmp/mysql* 2>/dev/null || true
+    rm -f /var/tmp/mysql* 2>/dev/null || true
+
+    # Update package database
+    print_info "Updating package database..."
+    apt-get update >> "$LOG_FILE" 2>&1
+
+    print_completion "MySQL Server Uninstallation"
+    
+    if [[ "$remove_data" == true ]]; then
+        print_warning "MySQL has been completely removed with all data deleted"
+    else
+        print_success "MySQL has been uninstalled (data preserved for potential recovery)"
+        print_info "Data backup location: /var/backups/mysql-uninstall-*"
+        print_info "Original data directory: /var/lib/mysql"
+    fi
+    
+    print_info "To reinstall MySQL, you can run this script and select 'Install MySQL Only'"
+    
+    log_message "MySQL uninstallation completed (remove_data: $remove_data)"
 }
 
 # =============================================================================
@@ -954,6 +1140,7 @@ display_system_info() {
     echo "Root Password: $MYSQL_ROOT_PASSWORD"
     echo "Configuration: /etc/mysql/conf.d/custom.cnf"
     echo "Log File: /var/log/mysql/error.log"
+    echo "Table Names: Configured with lower_case_table_names=1 for cross-platform compatibility"
     echo
     echo ".NET Information:"
     echo "================="
@@ -3058,10 +3245,14 @@ show_main_menu() {
         echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${YELLOW}17)${NC} Deploy .NET Web Application                                                         ${CYAN}║${NC}"
         echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${RED}UNINSTALL OPTIONS${NC}                                                                       ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}18)${NC} Uninstall MySQL (with optional data removal)                                       ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${RED}0)${NC} Exit                                                                                   ${CYAN}║${NC}"
         echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════════════════════╝${NC}"
         echo
-        echo -e "${WHITE}Enter your choice (0-17): ${NC}\c"
+        echo -e "${WHITE}Enter your choice (0-18): ${NC}\c"
         read choice
         
         case $choice in
@@ -3192,6 +3383,7 @@ show_main_menu() {
                 echo "  --monitoring-only   Install system monitoring tools only"
                 echo "  --security-only     Configure firewall and security only"
                 echo "  --deploy-dotnet-app Deploy .NET web application"
+                echo "  --uninstall-mysql   Uninstall MySQL with optional data removal"
                 echo "  --no-git            Skip Git/GitHub configuration"
                 echo "  --no-monitoring     Skip monitoring tools installation"
                 echo "  --no-interactive    Skip all interactive prompts"
@@ -3236,12 +3428,18 @@ show_main_menu() {
                 dotnet_web_app_deployment_menu
                 read -p "Press Enter to continue..." && continue
                 ;;
+            18)
+                print_info "Starting MySQL Uninstallation..."
+                check_root
+                uninstall_mysql
+                read -p "Press Enter to continue..." && continue
+                ;;
             0)
                 print_info "Exiting Ubuntu Server Setup..."
                 exit 0
                 ;;
             *)
-                print_error "Invalid option. Please select 0-17."
+                print_error "Invalid option. Please select 0-18."
                 sleep 2
                 ;;
         esac
@@ -3815,6 +4013,7 @@ case "${1:-}" in
         echo "  --monitoring-only   Install system monitoring tools only"
         echo "  --security-only     Configure firewall and security only"
         echo "  --deploy-dotnet-app Deploy .NET web application"
+        echo "  --uninstall-mysql   Uninstall MySQL with optional data removal"
         echo "  --no-git            Skip Git/GitHub configuration"
         echo "  --no-monitoring     Skip monitoring tools installation"
         echo "  --no-interactive    Skip all interactive prompts"
@@ -3906,6 +4105,12 @@ case "${1:-}" in
         check_root
         check_ubuntu
         dotnet_web_app_deployment_menu
+        exit 0
+        ;;
+    --uninstall-mysql)
+        print_info "Uninstalling MySQL with optional data removal"
+        check_root
+        uninstall_mysql
         exit 0
         ;;
     --manage-users)
