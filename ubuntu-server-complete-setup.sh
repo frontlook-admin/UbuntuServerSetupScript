@@ -331,79 +331,256 @@ install_dotnet() {
 # GIT AND GITHUB CONFIGURATION
 # =============================================================================
 
-configure_git_github() {
-    print_header "Configuring Git and GitHub"
-
-    log_message "Configuring Git and GitHub"
-
-    # Check if git is installed
-    if ! command -v git &> /dev/null; then
-        print_error "Git is not installed"
-        return 1
-    fi
-
-    # Configure Git user information
-    if [[ -n "$GITHUB_USERNAME" && -n "$GITHUB_EMAIL" ]]; then
-        print_info "Configuring Git user information..."
-        git config --global user.name "$GITHUB_USERNAME"
-        git config --global user.email "$GITHUB_EMAIL"
-        print_success "Git user configuration completed"
-    fi
-
-    # Configure Git settings
-    print_info "Configuring Git settings..."
-    git config --global init.defaultBranch main
-    git config --global pull.rebase false
-    git config --global core.editor vim
-    git config --global color.ui auto
-
-    # Generate SSH key for GitHub
-    read -p "Generate SSH key for GitHub authentication? (y/n): " -n 1 -r
+# Install Git system-wide (as root)
+install_git_system() {
+    print_header "Installing Git System-wide"
+    
+    log_message "Installing Git system-wide"
+    
+    # Update package lists
+    print_info "Updating package lists..."
+    apt update >> "$LOG_FILE" 2>&1
+    
+    # Install Git system-wide
+    print_info "Installing Git..."
+    apt install -y git >> "$LOG_FILE" 2>&1
+    
+    # Install GitHub CLI system-wide (optional)
+    read -p "Install GitHub CLI system-wide? (y/n): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        SSH_KEY_PATH="/root/.ssh/id_rsa"
-        if [[ ! -f "$SSH_KEY_PATH" ]]; then
-            print_info "Generating SSH key..."
-            ssh-keygen -t rsa -b 4096 -C "$GITHUB_EMAIL" -f "$SSH_KEY_PATH" -N ""
-            
-            # Start ssh-agent and add key
-            eval "$(ssh-agent -s)"
-            ssh-add "$SSH_KEY_PATH"
-            
-            print_success "SSH key generated successfully"
-            print_warning "Add the following public key to your GitHub account:"
-            echo "=====================================>"
-            cat "${SSH_KEY_PATH}.pub"
-            echo "<====================================="
-            
-            read -p "Press Enter after adding the key to GitHub..."
-            
-            # Test GitHub connection
-            print_info "Testing GitHub connection..."
-            if ssh -T git@github.com -o StrictHostKeyChecking=no 2>&1 | grep -q "successfully authenticated"; then
-                print_success "GitHub SSH connection successful"
-            else
-                print_warning "GitHub SSH connection test failed - please verify the key was added correctly"
-            fi
-        else
-            print_info "SSH key already exists at $SSH_KEY_PATH"
-        fi
-    fi
-
-    # Configure GitHub CLI (optional)
-    read -p "Install GitHub CLI (gh)? (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        print_info "Installing GitHub CLI..."
+        print_info "Installing GitHub CLI system-wide..."
         curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
         chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list
         apt update >> "$LOG_FILE" 2>&1
         apt install -y gh >> "$LOG_FILE" 2>&1
-        print_success "GitHub CLI installed successfully"
-        print_info "Run 'gh auth login' to authenticate with GitHub"
+        print_success "GitHub CLI installed system-wide"
     fi
+    
+    # Create user-specific GitHub configuration script
+    create_user_github_config_script
+    
+    print_success "Git system installation completed"
+    print_info "Users can now configure their individual GitHub profiles using: sudo /usr/local/bin/setup-user-github"
+}
 
+# Create script for user-specific GitHub configuration
+create_user_github_config_script() {
+    print_info "Creating user-specific GitHub configuration script..."
+    
+    cat > /usr/local/bin/setup-user-github <<'EOF'
+#!/bin/bash
+
+# =============================================================================
+# User-Specific GitHub Configuration Script
+# =============================================================================
+# This script configures Git and GitHub for individual users
+# Run as: sudo /usr/local/bin/setup-user-github <username>
+# =============================================================================
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+print_info() {
+    echo -e "${CYAN}ℹ $1${NC}"
+}
+
+print_success() {
+    echo -e "${GREEN}✓ $1${NC}"
+}
+
+print_error() {
+    echo -e "${RED}✗ $1${NC}"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠ $1${NC}"
+}
+
+print_header() {
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}$1${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════╝${NC}"
+}
+
+# Check if running as root
+if [[ $EUID -ne 0 ]]; then
+    print_error "This script must be run as root (use sudo)"
+    exit 1
+fi
+
+# Check if username is provided
+if [[ -z "$1" ]]; then
+    print_error "Usage: $0 <username>"
+    print_info "Example: $0 john"
+    exit 1
+fi
+
+USERNAME="$1"
+
+# Validate user exists
+if ! id "$USERNAME" &>/dev/null; then
+    print_error "User '$USERNAME' does not exist"
+    exit 1
+fi
+
+print_header "GitHub Configuration for User: $USERNAME"
+
+# Get user information
+USER_HOME=$(eval echo ~"$USERNAME")
+USER_UID=$(id -u "$USERNAME")
+USER_GID=$(id -g "$USERNAME")
+
+print_info "User home directory: $USER_HOME"
+print_info "User UID: $USER_UID, GID: $USER_GID"
+
+# Get GitHub information
+read -p "Enter GitHub username for $USERNAME: " GITHUB_USERNAME
+read -p "Enter GitHub email for $USERNAME: " GITHUB_EMAIL
+
+# Validate email format
+if [[ ! "$GITHUB_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+    print_error "Invalid email format"
+    exit 1
+fi
+
+print_info "Configuring Git for user $USERNAME..."
+
+# Configure Git for this user (run as the user)
+sudo -u "$USERNAME" git config --global user.name "$GITHUB_USERNAME"
+sudo -u "$USERNAME" git config --global user.email "$GITHUB_EMAIL"
+sudo -u "$USERNAME" git config --global init.defaultBranch main
+sudo -u "$USERNAME" git config --global pull.rebase false
+sudo -u "$USERNAME" git config --global core.editor vim
+sudo -u "$USERNAME" git config --global color.ui auto
+
+print_success "Git configuration completed for $USERNAME"
+
+# Generate SSH key for GitHub
+read -p "Generate SSH key for GitHub authentication for $USERNAME? (y/n): " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    SSH_DIR="$USER_HOME/.ssh"
+    SSH_KEY_PATH="$SSH_DIR/id_rsa"
+    
+    # Create .ssh directory if it doesn't exist
+    if [[ ! -d "$SSH_DIR" ]]; then
+        sudo -u "$USERNAME" mkdir -p "$SSH_DIR"
+        chmod 700 "$SSH_DIR"
+        chown "$USER_UID:$USER_GID" "$SSH_DIR"
+    fi
+    
+    if [[ ! -f "$SSH_KEY_PATH" ]]; then
+        print_info "Generating SSH key for $USERNAME..."
+        
+        # Generate SSH key as the user
+        sudo -u "$USERNAME" ssh-keygen -t rsa -b 4096 -C "$GITHUB_EMAIL" -f "$SSH_KEY_PATH" -N ""
+        
+        # Set proper permissions
+        chmod 600 "$SSH_KEY_PATH"
+        chmod 644 "${SSH_KEY_PATH}.pub"
+        chown "$USER_UID:$USER_GID" "$SSH_KEY_PATH" "${SSH_KEY_PATH}.pub"
+        
+        print_success "SSH key generated successfully for $USERNAME"
+        print_warning "Add the following public key to $USERNAME's GitHub account:"
+        echo "=====================================>"
+        cat "${SSH_KEY_PATH}.pub"
+        echo "<====================================="
+        
+        # Create SSH config for GitHub
+        SSH_CONFIG="$SSH_DIR/config"
+        if [[ ! -f "$SSH_CONFIG" ]]; then
+            sudo -u "$USERNAME" cat > "$SSH_CONFIG" <<SSHEOF
+# GitHub configuration
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_rsa
+    IdentitiesOnly yes
+SSHEOF
+            chmod 600 "$SSH_CONFIG"
+            chown "$USER_UID:$USER_GID" "$SSH_CONFIG"
+        fi
+        
+        print_info "SSH configuration created for $USERNAME"
+        read -p "Press Enter after adding the key to GitHub..."
+        
+        # Test GitHub connection as the user
+        print_info "Testing GitHub connection for $USERNAME..."
+        if sudo -u "$USERNAME" ssh -T git@github.com -o StrictHostKeyChecking=no 2>&1 | grep -q "successfully authenticated"; then
+            print_success "GitHub SSH connection successful for $USERNAME"
+        else
+            print_warning "GitHub SSH connection test failed - please verify the key was added correctly"
+        fi
+    else
+        print_info "SSH key already exists for $USERNAME at $SSH_KEY_PATH"
+    fi
+fi
+
+# GitHub CLI authentication (user-specific)
+if command -v gh &> /dev/null; then
+    read -p "Configure GitHub CLI for $USERNAME? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_info "GitHub CLI is installed system-wide"
+        print_info "User $USERNAME should run: gh auth login"
+        print_warning "Note: Each user must authenticate GitHub CLI individually"
+    fi
+fi
+
+# Create user-specific aliases
+print_info "Creating Git aliases for $USERNAME..."
+sudo -u "$USERNAME" git config --global alias.st status
+sudo -u "$USERNAME" git config --global alias.co checkout
+sudo -u "$USERNAME" git config --global alias.br branch
+sudo -u "$USERNAME" git config --global alias.ci commit
+sudo -u "$USERNAME" git config --global alias.lg "log --oneline --graph --decorate"
+
+print_success "GitHub configuration completed for user: $USERNAME"
+print_info "Configuration files created in: $USER_HOME/.gitconfig and $USER_HOME/.ssh/"
+print_warning "Security: Only $USERNAME has access to their GitHub configuration"
+
+EOF
+
+    chmod +x /usr/local/bin/setup-user-github
+    print_success "User-specific GitHub configuration script created"
+}
+
+# Main Git and GitHub configuration function
+configure_git_github() {
+    print_header "Git and GitHub Configuration"
+    
+    # Check if Git should be configured
+    if [[ "$INSTALL_GIT" != true ]]; then
+        print_info "Git installation skipped"
+        return 0
+    fi
+    
+    # Install Git system-wide
+    install_git_system
+    
+    # Ask if admin wants to configure GitHub for a user right now
+    read -p "Configure GitHub for a specific user now? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        read -p "Enter username to configure GitHub for: " SETUP_USERNAME
+        if id "$SETUP_USERNAME" &>/dev/null; then
+            /usr/local/bin/setup-user-github "$SETUP_USERNAME"
+        else
+            print_warning "User '$SETUP_USERNAME' does not exist. You can configure GitHub later using:"
+            print_info "sudo /usr/local/bin/setup-user-github <username>"
+        fi
+    else
+        print_info "You can configure GitHub for users later using:"
+        print_info "sudo /usr/local/bin/setup-user-github <username>"
+    fi
+    
     print_success "Git and GitHub configuration completed"
 }
 
@@ -789,14 +966,12 @@ display_system_info() {
     if [[ "$CONFIGURE_GITHUB" == true ]]; then
         echo "Git Configuration:"
         echo "=================="
-        echo "Username: $(git config --global user.name)"
-        echo "Email: $(git config --global user.email)"
-        if [[ -f "/root/.ssh/id_rsa.pub" ]]; then
-            echo "SSH Key: /root/.ssh/id_rsa.pub"
-        fi
+        echo "Git: Installed system-wide"
         if command -v gh &> /dev/null; then
-            echo "GitHub CLI: Installed"
+            echo "GitHub CLI: Installed system-wide"
         fi
+        echo "User Configuration: Use 'sudo /usr/local/bin/setup-user-github <username>'"
+        echo "Security: Each user has isolated GitHub configuration"
         echo
     fi
     echo "Monitoring Tools:"
@@ -848,9 +1023,9 @@ display_system_info() {
     echo "4. Configure backup strategies"
     echo "5. Monitor system performance with installed tools"
     if [[ "$CONFIGURE_GITHUB" == true ]]; then
-        echo "6. Test GitHub connection: ssh -T git@github.com"
+        echo "6. Configure GitHub for users: sudo /usr/local/bin/setup-user-github <username>"
         if command -v gh &> /dev/null; then
-            echo "7. Authenticate GitHub CLI: gh auth login"
+            echo "7. Users authenticate GitHub CLI individually: gh auth login"
         fi
     fi
     echo "8. Review firewall rules: ufw status verbose"
@@ -1991,12 +2166,22 @@ WorkingDirectory=$DOTNET_APP_DESTINATION_PATH
 ExecStart=/usr/bin/dotnet $main_exe --urls=$urls
 Restart=always
 RestartSec=10
+KillSignal=SIGINT
+SyslogIdentifier=dotnet-app
+User=dotnetapp
+Group=dotnetapp
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
-$(if [[ "$DOTNET_USE_HTTPS" == "true" ]]; then
-    echo "Environment=ASPNETCORE_Kestrel__Certificates__Default__Path=$SSL_CERT_PATH"
-    echo "Environment=ASPNETCORE_Kestrel__Certificates__Default__KeyPath=$SSL_KEY_PATH"
-fi)
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/dotnetapp
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
 
 [Install]
 WantedBy=multi-user.target
@@ -2595,7 +2780,7 @@ SyslogIdentifier=dotnet-$app_name
 User=www-data
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
-Environment=ASPNETCORE_URLS=http://localhost:$port
+Environment=ASPNETCORE_URLS=https://0.0.0.0:$port
 
 [Install]
 WantedBy=multi-user.target
@@ -3006,6 +3191,7 @@ show_main_menu() {
                 echo "  --git-only          Install and configure Git/GitHub only"
                 echo "  --monitoring-only   Install system monitoring tools only"
                 echo "  --security-only     Configure firewall and security only"
+                echo "  --deploy-dotnet-app Deploy .NET web application"
                 echo "  --no-git            Skip Git/GitHub configuration"
                 echo "  --no-monitoring     Skip monitoring tools installation"
                 echo "  --no-interactive    Skip all interactive prompts"
