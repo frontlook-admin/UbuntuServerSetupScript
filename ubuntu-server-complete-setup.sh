@@ -219,12 +219,93 @@ install_mysql() {
 
     log_message "Starting MySQL installation"
 
-    # Set MySQL root password non-interactively
+    # Set MySQL root password with user choice
     if [[ -z "$MYSQL_ROOT_PASSWORD" ]]; then
-        print_info "Generating random MySQL root password..."
-        MYSQL_ROOT_PASSWORD=$(openssl rand -base64 32)
-        print_warning "Generated MySQL root password: $MYSQL_ROOT_PASSWORD"
-        print_warning "Please save this password securely!"
+        echo
+        print_info "MySQL Root Password Setup"
+        echo "Choose how to set the MySQL root password:"
+        echo "  1) Set my own password (recommended for production)"
+        echo "  2) Auto-generate a secure random password"
+        echo
+        echo -e "${WHITE}Select option (1-2): ${NC}\c"
+        read -r password_choice
+        
+        case $password_choice in
+            1)
+                echo
+                print_info "Setting custom MySQL root password..."
+                
+                # Function to read password securely
+                read_mysql_password() {
+                    local password=""
+                    local confirm_password=""
+                    local attempts=0
+                    local max_attempts=3
+                    
+                    while [[ $attempts -lt $max_attempts ]]; do
+                        echo -e "${WHITE}Enter MySQL root password (minimum 8 characters): ${NC}\c"
+                        read -s password
+                        echo
+                        
+                        # Validate password length
+                        if [[ ${#password} -lt 8 ]]; then
+                            print_error "Password must be at least 8 characters long"
+                            ((attempts++))
+                            continue
+                        fi
+                        
+                        # Validate password complexity
+                        if [[ ! "$password" =~ [A-Za-z] ]] || [[ ! "$password" =~ [0-9] ]]; then
+                            print_warning "For better security, password should contain both letters and numbers"
+                            echo -e "${WHITE}Continue with this password? (y/N): ${NC}\c"
+                            read -r continue_weak
+                            if [[ ! "$continue_weak" =~ ^[Yy]$ ]]; then
+                                ((attempts++))
+                                continue
+                            fi
+                        fi
+                        
+                        echo -e "${WHITE}Confirm MySQL root password: ${NC}\c"
+                        read -s confirm_password
+                        echo
+                        
+                        if [[ "$password" == "$confirm_password" ]]; then
+                            MYSQL_ROOT_PASSWORD="$password"
+                            print_success "MySQL root password set successfully"
+                            break
+                        else
+                            print_error "Passwords do not match"
+                            ((attempts++))
+                        fi
+                    done
+                    
+                    if [[ $attempts -eq $max_attempts ]]; then
+                        print_warning "Maximum password attempts reached. Switching to auto-generated password."
+                        return 1
+                    fi
+                    
+                    return 0
+                }
+                
+                # Try to get user password
+                if ! read_mysql_password; then
+                    print_info "Generating random MySQL root password..."
+                    MYSQL_ROOT_PASSWORD=$(openssl rand -base64 32)
+                    print_warning "Generated MySQL root password: $MYSQL_ROOT_PASSWORD"
+                    print_warning "Please save this password securely!"
+                fi
+                ;;
+            2|*)
+                print_info "Generating random MySQL root password..."
+                MYSQL_ROOT_PASSWORD=$(openssl rand -base64 32)
+                print_warning "Generated MySQL root password: $MYSQL_ROOT_PASSWORD"
+                print_warning "Please save this password securely!"
+                ;;
+        esac
+        
+        echo
+    else
+        print_info "Using pre-configured MySQL root password"
     fi
 
     # Pre-configure MySQL installation
@@ -4008,6 +4089,7 @@ case "${1:-}" in
         echo "  --help, -h          Show this help message"
         echo "  --auto              Run with default settings (non-interactive)"
         echo "  --mysql-only        Install only MySQL"
+        echo "  --mysql-password    Set MySQL root password (next argument)"
         echo "  --dotnet-only       Install only .NET"
         echo "  --git-only          Install and configure Git/GitHub only"
         echo "  --monitoring-only   Install system monitoring tools only"
@@ -4038,6 +4120,7 @@ case "${1:-}" in
         echo "EXAMPLES:"
         echo "  $0                           # Show main menu"
         echo "  $0 --auto                    # Automatic installation"
+        echo "  $0 --mysql-password mypass   # Set MySQL root password"
         echo "  $0 --make-executable         # Make all scripts executable"
         echo "  $0 --manage-users            # Manage Ubuntu users"
         echo "  $0 --manage-mysql            # Manage MySQL administration"
@@ -4059,6 +4142,23 @@ case "${1:-}" in
         install_mysql
         display_system_info
         exit 0
+        ;;
+    --mysql-password)
+        if [[ -z "$2" ]]; then
+            print_error "MySQL password argument required after --mysql-password"
+            echo "Usage: $0 --mysql-password <password>"
+            exit 1
+        fi
+        MYSQL_ROOT_PASSWORD="$2"
+        print_info "MySQL root password set via command line"
+        shift 2  # Remove both arguments
+        # Continue with remaining arguments or show menu
+        if [[ $# -eq 0 ]]; then
+            show_main_menu
+        else
+            # Re-process remaining arguments
+            exec "$0" "$@"
+        fi
         ;;
     --dotnet-only)
         print_info "Installing .NET only"
