@@ -334,7 +334,7 @@ FLUSH PRIVILEGES;
 EOF
 
     # Create MySQL configuration file
-    print_info "Creating MySQL configuration with lower_case_table_names for cross-platform compatibility..."
+    print_info "Creating MySQL configuration for optimal performance and UTF-8 support..."
     cat > /etc/mysql/conf.d/custom.cnf <<EOF
 [mysql]
 default-character-set = utf8mb4
@@ -342,23 +342,104 @@ default-character-set = utf8mb4
 [mysqld]
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
-# Table names are stored in lowercase for cross-platform compatibility
-lower_case_table_names = 1
+# Performance and logging configuration
 max_connections = 200
 innodb_buffer_pool_size = 256M
 slow_query_log = 1
 slow_query_log_file = /var/log/mysql/slow.log
 long_query_time = 2
+# Security settings
+bind-address = 0.0.0.0
+# Allow connections from any IP (modify as needed for security)
 EOF
 
     # Restart MySQL to apply configuration
     systemctl restart mysql
 
-    print_success "MySQL Server installation completed with lower_case_table_names=1 for cross-platform compatibility"
+    print_success "MySQL Server installation completed with optimized configuration"
 
     # Display MySQL information
     print_info "MySQL Status:"
     systemctl status mysql --no-pager -l
+}
+
+# =============================================================================
+# MYSQL TROUBLESHOOTING
+# =============================================================================
+
+fix_mysql_lower_case_error() {
+    print_header "Fix MySQL lower_case_table_names Error"
+    
+    log_message "Fixing MySQL lower_case_table_names error"
+    
+    print_warning "This function fixes the error:"
+    echo "Different lower_case_table_names settings for server and data dictionary"
+    echo
+    
+    # Check if MySQL is installed
+    if ! command -v mysql &> /dev/null; then
+        print_error "MySQL is not installed"
+        return 1
+    fi
+    
+    print_info "Checking MySQL configuration files..."
+    
+    # Stop MySQL service
+    print_info "Stopping MySQL service..."
+    systemctl stop mysql 2>/dev/null || true
+    
+    # Remove the problematic lower_case_table_names setting
+    print_info "Removing lower_case_table_names setting from configuration files..."
+    
+    # Check and fix custom configuration
+    if [[ -f /etc/mysql/conf.d/custom.cnf ]]; then
+        print_info "Updating /etc/mysql/conf.d/custom.cnf..."
+        sed -i '/lower_case_table_names/d' /etc/mysql/conf.d/custom.cnf
+        sed -i '/Table names are stored in lowercase/d' /etc/mysql/conf.d/custom.cnf
+    fi
+    
+    # Check other common configuration files
+    local config_files=(
+        "/etc/mysql/my.cnf"
+        "/etc/mysql/mysql.conf.d/mysqld.cnf"
+        "/etc/mysql/conf.d/mysql.cnf"
+    )
+    
+    for config_file in "${config_files[@]}"; do
+        if [[ -f "$config_file" ]]; then
+            print_info "Checking $config_file..."
+            if grep -q "lower_case_table_names" "$config_file"; then
+                print_info "Removing lower_case_table_names from $config_file..."
+                sed -i '/lower_case_table_names/d' "$config_file"
+            fi
+        fi
+    done
+    
+    # Start MySQL service
+    print_info "Starting MySQL service..."
+    if systemctl start mysql; then
+        print_success "MySQL service started successfully!"
+        print_info "The lower_case_table_names error has been fixed."
+        echo
+        print_info "MySQL Status:"
+        systemctl status mysql --no-pager -l
+    else
+        print_error "Failed to start MySQL service"
+        print_info "Please check MySQL error logs:"
+        echo "  sudo journalctl -u mysql.service -n 20"
+        echo "  sudo tail -f /var/log/mysql/error.log"
+        return 1
+    fi
+    
+    echo
+    print_info "IMPORTANT: Table names will now be case-sensitive (default Linux behavior)"
+    print_info "If you need case-insensitive table names, you must:"
+    echo "  1. Stop MySQL: sudo systemctl stop mysql"
+    echo "  2. Remove data directory: sudo rm -rf /var/lib/mysql"
+    echo "  3. Add lower_case_table_names=1 to /etc/mysql/mysql.conf.d/mysqld.cnf"
+    echo "  4. Reinstall MySQL to reinitialize data directory"
+    
+    return 0
 }
 
 # =============================================================================
@@ -1221,7 +1302,7 @@ display_system_info() {
     echo "Root Password: $MYSQL_ROOT_PASSWORD"
     echo "Configuration: /etc/mysql/conf.d/custom.cnf"
     echo "Log File: /var/log/mysql/error.log"
-    echo "Table Names: Configured with lower_case_table_names=1 for cross-platform compatibility"
+    echo "Character Set: UTF-8 (utf8mb4) for full Unicode support"
     echo
     echo ".NET Information:"
     echo "================="
@@ -3330,10 +3411,14 @@ show_main_menu() {
         echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${YELLOW}18)${NC} Uninstall MySQL (with optional data removal)                                       ${CYAN}║${NC}"
         echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${ORANGE}TROUBLESHOOTING OPTIONS${NC}                                                            ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}19)${NC} Fix MySQL lower_case_table_names Error                                              ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${CYAN}║${NC} ${RED}0)${NC} Exit                                                                                   ${CYAN}║${NC}"
         echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════════════════════╝${NC}"
         echo
-        echo -e "${WHITE}Enter your choice (0-18): ${NC}\c"
+        echo -e "${WHITE}Enter your choice (0-19): ${NC}\c"
         read choice
         
         case $choice in
@@ -3515,12 +3600,18 @@ show_main_menu() {
                 uninstall_mysql
                 read -p "Press Enter to continue..." && continue
                 ;;
+            19)
+                print_info "Fixing MySQL lower_case_table_names Error..."
+                check_root
+                fix_mysql_lower_case_error
+                read -p "Press Enter to continue..." && continue
+                ;;
             0)
                 print_info "Exiting Ubuntu Server Setup..."
                 exit 0
                 ;;
             *)
-                print_error "Invalid option. Please select 0-18."
+                print_error "Invalid option. Please select 0-19."
                 sleep 2
                 ;;
         esac
@@ -4096,6 +4187,7 @@ case "${1:-}" in
         echo "  --security-only     Configure firewall and security only"
         echo "  --deploy-dotnet-app Deploy .NET web application"
         echo "  --uninstall-mysql   Uninstall MySQL with optional data removal"
+        echo "  --fix-mysql-error   Fix MySQL lower_case_table_names error"
         echo "  --no-git            Skip Git/GitHub configuration"
         echo "  --no-monitoring     Skip monitoring tools installation"
         echo "  --no-interactive    Skip all interactive prompts"
@@ -4121,6 +4213,7 @@ case "${1:-}" in
         echo "  $0                           # Show main menu"
         echo "  $0 --auto                    # Automatic installation"
         echo "  $0 --mysql-password mypass   # Set MySQL root password"
+        echo "  $0 --fix-mysql-error         # Fix MySQL lower_case_table_names error"
         echo "  $0 --make-executable         # Make all scripts executable"
         echo "  $0 --manage-users            # Manage Ubuntu users"
         echo "  $0 --manage-mysql            # Manage MySQL administration"
@@ -4211,6 +4304,12 @@ case "${1:-}" in
         print_info "Uninstalling MySQL with optional data removal"
         check_root
         uninstall_mysql
+        exit 0
+        ;;
+    --fix-mysql-error)
+        print_info "Fixing MySQL lower_case_table_names error"
+        check_root
+        fix_mysql_lower_case_error
         exit 0
         ;;
     --manage-users)
