@@ -52,6 +52,26 @@ This comprehensive bash script automates the installation and configuration of a
 
 The fastest way to install everything with default settings:
 
+#### Kali Linux
+```bash
+cd /root/Repos
+sudo rm -rf UbuntuServerSetupScript
+git clone https://github.com/frontlook-admin/UbuntuServerSetupScript.git
+cd UbuntuServerSetupScript
+sudo chmod +x kali-server-complete-setup.sh
+./kali-server-complete-setup.sh
+```
+
+#### Ubuntu Server
+```bash
+cd /root/Repos
+sudo rm -rf UbuntuServerSetupScript
+git clone https://github.com/frontlook-admin/UbuntuServerSetupScript.git
+cd UbuntuServerSetupScript
+sudo chmod +x ubuntu-server-complete-setup.sh
+./ubuntu-server-complete-setup.sh
+```
+
 ```bash
 # Complete automatic installation
 curl -sSL https://raw.githubusercontent.com/frontlook-admin/UbuntuServerSetupScript/main/install.sh | sudo bash
